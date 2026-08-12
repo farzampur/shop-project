@@ -12,8 +12,11 @@ from .serializers import (
     CartItemCreateSerializer,
     CartItemUpdateSerializer,
 )
-from .permissions import CartPermission
 
+from .permissions import (
+    CartPermission,
+    get_user_max_discount,
+)
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -109,6 +112,22 @@ class CartItemViewSet(viewsets.ModelViewSet):
             "discount_percent",
             0,
         )
+        
+        max_discount = get_user_max_discount(
+            self.request.user,
+            cart.store
+        )
+
+        if max_discount is None:
+            raise ValidationError(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        if discount_percent > max_discount:
+            raise ValidationError(
+                f"حداکثر تخفیف مجاز برای شما "
+                f"{max_discount}% است."
+            )        
 
         inventory = product.inventories.filter(
             store=cart.store
@@ -161,6 +180,27 @@ class CartItemViewSet(viewsets.ModelViewSet):
             "quantity",
             item.quantity,
         )
+
+        new_discount = serializer.validated_data.get(
+            "discount_percent",
+            item.discount_percent,
+        )
+
+        max_discount = get_user_max_discount(
+            self.request.user,
+            item.cart.store
+        )
+
+        if max_discount is None:
+            raise ValidationError(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        if new_discount > max_discount:
+            raise ValidationError(
+                f"حداکثر تخفیف مجاز برای شما "
+                f"{max_discount}% است."
+            )
 
         inventory = item.product.inventories.filter(
             store=item.cart.store
