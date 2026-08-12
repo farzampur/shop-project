@@ -46,6 +46,12 @@ urlpatterns = [
         include("products.urls")
     ),
 
+    #sales
+    path(
+        "api/sales/",
+        include("sales.urls")
+    ),
+
 
 
     

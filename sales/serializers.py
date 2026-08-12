@@ -1,0 +1,193 @@
+from rest_framework import serializers
+
+from .models import Cart, CartItem
+
+
+class CartItemSerializer(serializers.ModelSerializer):
+
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True
+    )
+
+    discount_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    final_unit_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    total_price_before_discount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    total_discount_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    total_price = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    class Meta:
+        model = CartItem
+
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "quantity",
+            "unit_price",
+            "discount_percent",
+            "discount_amount",
+            "final_unit_price",
+            "total_price_before_discount",
+            "total_discount_amount",
+            "total_price",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "product_name",
+            "discount_amount",
+            "final_unit_price",
+            "total_price_before_discount",
+            "total_discount_amount",
+            "total_price",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class CartSerializer(serializers.ModelSerializer):
+
+    items = CartItemSerializer(
+        many=True,
+        read_only=True
+    )
+
+    store_name = serializers.CharField(
+        source="store.name",
+        read_only=True
+    )
+
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True
+    )
+
+    total_before_discount = serializers.SerializerMethodField()
+
+    total_discount = serializers.SerializerMethodField()
+
+    total_price = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Cart
+
+        fields = [
+            "id",
+            "user",
+            "username",
+            "store",
+            "store_name",
+            "items",
+            "total_before_discount",
+            "total_discount",
+            "total_price",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "user",
+            "username",
+            "store_name",
+            "items",
+            "total_before_discount",
+            "total_discount",
+            "total_price",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_total_before_discount(self, obj):
+        return sum(
+            item.total_price_before_discount
+            for item in obj.items.all()
+        )
+
+    def get_total_discount(self, obj):
+        return sum(
+            item.total_discount_amount
+            for item in obj.items.all()
+        )
+
+    def get_total_price(self, obj):
+        return sum(
+            item.total_price
+            for item in obj.items.all()
+        )
+        
+        
+        
+class CartItemCreateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CartItem
+
+        fields = [
+            "product",
+            "quantity",
+            "discount_percent",
+        ]
+
+        extra_kwargs = {
+            "quantity": {
+                "min_value": 0.001
+            },
+            "discount_percent": {
+                "min_value": 0,
+                "max_value": 100
+            }
+        }
+
+
+class CartItemUpdateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CartItem
+
+        fields = [
+            "quantity",
+            "discount_percent",
+        ]
+
+        extra_kwargs = {
+            "quantity": {
+                "min_value": 0.001
+            },
+            "discount_percent": {
+                "min_value": 0,
+                "max_value": 100
+            }
+        }
+
+
+
+
+        
