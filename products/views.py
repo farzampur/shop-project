@@ -145,7 +145,7 @@ class InventoryViewSet(viewsets.ModelViewSet):
 
         serializer.save()
         
-        
+
 class InventoryTransactionViewSet(
     viewsets.ReadOnlyModelViewSet
 ):
