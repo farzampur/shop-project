@@ -159,3 +159,55 @@ class Inventory(models.Model):
 
     def __str__(self):
         return f"{self.product.name} - {self.store.name}"        
+        
+        
+        
+class InventoryTransaction(models.Model):
+
+    TYPE_PURCHASE = "purchase"
+    TYPE_SALE = "sale"
+    TYPE_RETURN = "return"
+    TYPE_ADJUSTMENT = "adjustment"
+
+    TRANSACTION_TYPES = [
+        (TYPE_PURCHASE, "Purchase"),
+        (TYPE_SALE, "Sale"),
+        (TYPE_RETURN, "Return"),
+        (TYPE_ADJUSTMENT, "Adjustment"),
+    ]
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE
+    )
+
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPES
+    )
+
+    quantity = models.DecimalField(
+        max_digits=15,
+        decimal_places=3
+    )
+
+    reference_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+
+    

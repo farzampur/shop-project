@@ -1,8 +1,13 @@
 from rest_framework_nested import routers
+from rest_framework.routers import DefaultRouter
+
+from django.urls import path
 
 from .views import (
     CartViewSet,
     CartItemViewSet,
+    CheckoutView,
+    OrderViewSet,    
 )
 
 
@@ -26,5 +31,22 @@ cart_router.register(
     basename="cart-items"
 )
 
+router.register(
+    "orders",
+    OrderViewSet,
+    basename="orders"
+)
 
-urlpatterns = router.urls + cart_router.urls
+
+
+urlpatterns = (
+    router.urls
+    + cart_router.urls
+    + [
+        path(
+            "checkout/",
+            CheckoutView.as_view(),
+            name="checkout",
+        ),
+    ]
+)

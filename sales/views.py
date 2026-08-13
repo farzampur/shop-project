@@ -3,15 +3,30 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.decorators import action
+
 from accounts.models import UserStore
 
 from .models import Cart, CartItem
+
+from .models import Order, OrderItem
+
 from .serializers import (
     CartSerializer,
     CartItemSerializer,
     CartItemCreateSerializer,
     CartItemUpdateSerializer,
+    CheckoutSerializer,
+    OrderSerializer,
+    OrderStatusSerializer,
 )
+
+from .services import CheckoutService
+from .services import OrderService
+
 
 from .permissions import (
     CartPermission,
@@ -220,3 +235,100 @@ class CartItemViewSet(viewsets.ModelViewSet):
         serializer.save(
             unit_price=item.product.sale_price
         )
+        
+        
+        
+class CheckoutView(APIView):
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+    def post(self, request):
+
+        serializer = CheckoutSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(raise_exception=True)
+
+        cart_id = serializer.validated_data["cart_id"]
+
+        try:
+            cart = Cart.objects.get(
+                id=cart_id,
+                user=request.user
+            )
+
+            order = CheckoutService.checkout(cart)
+
+        except Cart.DoesNotExist:
+            return Response(
+                {
+                    "detail": "سبد خرید پیدا نشد."
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response(
+            {
+                "id": order.id,
+                "status": order.status,
+                "total_before_discount": order.total_before_discount,
+                "total_discount": order.total_discount,
+                "total_price": order.total_price,
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+class OrderViewSet(viewsets.ReadOnlyModelViewSet):
+
+    serializer_class = OrderSerializer
+
+    permission_classes = [
+        IsAuthenticated,
+    ]
+
+    def get_queryset(self):
+
+        return Order.objects.filter(
+            user=self.request.user
+        ).prefetch_related(
+            "items"
+        ).select_related(
+            "store",
+            "user",
+        ).order_by("-id")
+
+
+    @action(
+    detail=True,
+    methods=["post"]
+    )
+    def change_status(self, request, pk=None):
+
+        order = self.get_object()
+
+        serializer = OrderStatusSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        order = OrderService.change_status(
+            order,
+            serializer.validated_data["status"]
+        )
+
+        return Response(
+            {
+                "id": order.id,
+                "status": order.status,
+            }
+        )       
+
+
+        

@@ -1,11 +1,12 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Category, Product, Inventory
+from .models import Category, Product, Inventory, InventoryTransaction
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
     InventorySerializer,
+    InventoryTransactionSerializer,
 )
 from .permissions import (
     StoreRolePermission,
@@ -143,3 +144,43 @@ class InventoryViewSet(viewsets.ModelViewSet):
             )
 
         serializer.save()
+        
+        
+class InventoryTransactionViewSet(
+    viewsets.ReadOnlyModelViewSet
+):
+
+    serializer_class = (
+        InventoryTransactionSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        queryset = (
+            InventoryTransaction.objects
+            .select_related(
+                "product",
+                "store"
+            )
+            .order_by("-id")
+        )
+
+        product_id = (
+            self.request.query_params.get(
+                "product"
+            )
+        )
+
+        if product_id:
+            queryset = queryset.filter(
+                product_id=product_id
+            )
+
+        return queryset
+
+
+        

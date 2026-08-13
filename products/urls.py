@@ -4,6 +4,7 @@ from .views import (
     CategoryViewSet,
     ProductViewSet,
     InventoryViewSet,
+    InventoryTransactionViewSet,    
 )
 
 
@@ -25,6 +26,12 @@ router.register(
     r"inventory",
     InventoryViewSet,
     basename="inventory"
+)
+
+router.register(
+    "transactions",
+    InventoryTransactionViewSet,
+    basename="transactions"
 )
 
 

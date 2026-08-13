@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product, Inventory
+from .models import Category, Product, Inventory, InventoryTransaction
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -107,3 +107,22 @@ class InventorySerializer(serializers.ModelSerializer):
             "store_name",
             "updated_at",
         ]
+        
+        
+class InventoryTransactionSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = InventoryTransaction
+
+        fields = [
+            "id",
+            "transaction_type",
+            "quantity",
+            "reference_id",
+            "description",
+            "created_at",
+        ]
+
+        

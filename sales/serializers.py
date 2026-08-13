@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import Cart, CartItem
-
+from .models import Order, OrderItem
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -188,6 +188,54 @@ class CartItemUpdateSerializer(serializers.ModelSerializer):
         }
 
 
-
-
         
+class CheckoutSerializer(serializers.Serializer):
+    cart_id = serializers.IntegerField()
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = OrderItem
+
+        fields = [
+            "id",
+            "product_id",
+            "product_name",
+            "quantity",
+            "unit_price",
+            "discount_percent",
+            "total_price",
+        ]
+
+
+class OrderSerializer(serializers.ModelSerializer):
+
+    items = OrderItemSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta:
+        model = Order
+
+        fields = [
+            "id",
+            "status",
+            "total_before_discount",
+            "total_discount",
+            "total_price",
+            "created_at",
+            "items",
+        ]
+        
+        
+class OrderStatusSerializer(serializers.Serializer):
+
+    status = serializers.ChoiceField(
+        choices=[
+            "confirmed",
+            "cancelled",
+            "delivered",
+        ]
+    )        
