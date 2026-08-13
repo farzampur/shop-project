@@ -1,5 +1,6 @@
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate
+from django.db.models.functions import TruncMonth
 
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -11,10 +12,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import action
 
+from decimal import Decimal
+
 from accounts.models import UserStore
 
 from .models import Cart, CartItem
-
 from .models import Order, OrderItem
 
 from .serializers import (
@@ -362,5 +364,101 @@ class SalesReportViewSet(
             queryset
         )
 
+    @action(
+        detail=False,
+        methods=["get"]
+    )
+    def monthly(self, request):
 
+        queryset = (
+            Order.objects
+            .filter(
+                user=request.user
+            )
+            .annotate(
+                month=TruncMonth(
+                    "created_at"
+                )
+            )
+            .values(
+                "month"
+            )
+            .annotate(
+                order_count=Count("id"),
+                total_sales=Sum(
+                    "total_price"
+                )
+            )
+            .order_by(
+                "-month"
+            )
+        )
+
+        return Response(
+            queryset
+        )
+            
+    @action(
+        detail=False,
+        methods=["get"]
+    )
+    def top_products(self, request):
+
+        queryset = (
+            OrderItem.objects
+            .values(
+                "product_id",
+                "product_name"
+            )
+            .annotate(
+                total_quantity=Sum(
+                    "quantity"
+                ),
+                total_sales=Sum(
+                    "total_price"
+                )
+            )
+            .order_by(
+                "-total_quantity"
+            )[:20]
+        )
+
+        return Response(
+            queryset
+        )        
         
+    @action(
+        detail=False,
+        methods=["get"]
+    )
+    def profit(self, request):
+
+        total_sales = Decimal("0")
+        total_cost = Decimal("0")
+
+        items = OrderItem.objects.all()
+
+        for item in items:
+
+            sale_amount = item.total_price
+
+            cost_amount = (
+                item.quantity *
+                item.product.purchase_price
+            )
+
+            total_sales += sale_amount
+            total_cost += cost_amount
+
+        total_profit = (
+            total_sales -
+            total_cost
+        )
+
+        return Response(
+            {
+                "total_sales": total_sales,
+                "total_cost": total_cost,
+                "total_profit": total_profit,
+            }
+        )        

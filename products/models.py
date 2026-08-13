@@ -96,6 +96,8 @@ class Product(models.Model):
         verbose_name="آخرین ویرایش"
     )
 
+
+
     def __str__(self):
         return self.name
 
@@ -365,4 +367,4 @@ class PurchaseItem(models.Model):
         )
 
 
-        
+       

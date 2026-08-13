@@ -57,6 +57,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
+            "purchase_price",            
         ]
 
         read_only_fields = [
