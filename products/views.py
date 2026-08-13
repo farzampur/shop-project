@@ -1,13 +1,29 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
-from .models import Category, Product, Inventory, InventoryTransaction
+from .services import PurchaseService
+
+from .models import (
+    Category,
+    Product,
+    Inventory,
+    InventoryTransaction,
+    Supplier,
+    Purchase,
+    PurchaseItem,
+)
+
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
     InventorySerializer,
     InventoryTransactionSerializer,
     InventoryReportSerializer,
+    SupplierSerializer,
+    PurchaseSerializer,
+    PurchaseItemSerializer,    
 )
 from .permissions import (
     StoreRolePermission,
@@ -221,4 +237,123 @@ class InventoryReportViewSet(
         return queryset
 
 
+class SupplierViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = SupplierSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = Supplier.objects.all()
+
+
+class PurchaseViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = PurchaseSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        return (
+            Purchase.objects
+            .select_related(
+                "supplier",
+                "store",
+                "user"
+            )
+            .prefetch_related(
+                "items"
+            )
+        )
+
+    def perform_create(
+        self,
+        serializer
+    ):
+
+        serializer.save(
+            user=self.request.user
+        )
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
+    def receive(self, request, pk=None):
+
+        purchase = self.get_object()
+
+        if purchase.received:
+            return Response(
+                {
+                    "detail":
+                    "این خرید قبلاً دریافت شده است."
+                },
+                status=400
+            )
+
+        PurchaseService.receive_purchase(
+            purchase
+        )
+
+        purchase.received = True
+        purchase.save(
+            update_fields=["received"]
+        )
+
+        return Response(
+            {
+                "id": purchase.id,
+                "received": True
+            }
+        )        
         
+        
+class PurchaseItemViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = PurchaseItemSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        purchase_id = self.kwargs.get(
+            "purchase_pk"
+        )
+
+        return PurchaseItem.objects.filter(
+            purchase_id=purchase_id
+        ).select_related(
+            "purchase",
+            "product"
+        )
+
+    def perform_create(self, serializer):
+
+        purchase_id = self.kwargs.get(
+            "purchase_pk"
+        )
+
+        purchase = Purchase.objects.get(
+            id=purchase_id
+        )
+
+        serializer.save(
+            purchase=purchase
+        )
+        
+        
+        
+    

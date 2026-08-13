@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product, Inventory, InventoryTransaction
+from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseItem
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -152,4 +152,88 @@ class InventoryReportSerializer(serializers.ModelSerializer):
         ]
 
 
+class SupplierSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = Supplier
+
+        fields = "__all__"        
+        
+
+class PurchaseItemSerializer(
+    serializers.ModelSerializer
+):
+
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = PurchaseItem
+
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "quantity",
+            "unit_price",
+            "total_price",
+        ]
+
+        read_only_fields = [
+            "total_price"
+        ]
+
+
+
+class PurchaseSerializer(
+    serializers.ModelSerializer
+):
+
+    supplier_name = serializers.CharField(
+        source="supplier.name",
+        read_only=True
+    )
+
+    store_name = serializers.CharField(
+        source="store.name",
+        read_only=True
+    )
+
+    items = PurchaseItemSerializer(
+        many=True,
+        read_only=True
+    )
+
+    received = serializers.BooleanField(
+        read_only=True
+    )
+
+    class Meta:
+        model = Purchase
+
+        fields = [
+            "id",
+            "supplier",
+            "supplier_name",
+            "store",
+            "store_name",
+            "user",
+            "invoice_number",
+            "total_amount",
+            "created_at",
+            "items",
+            "received",
+        ]
+
+        read_only_fields = [
+            "user",
+            "total_amount",
+            "created_at",
+        ]
+        
+        
         

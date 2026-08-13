@@ -1,4 +1,5 @@
 from rest_framework.routers import DefaultRouter
+from rest_framework_nested import routers
 
 from .views import (
     CategoryViewSet,
@@ -6,6 +7,9 @@ from .views import (
     InventoryViewSet,
     InventoryTransactionViewSet,   
     InventoryReportViewSet,
+    SupplierViewSet,
+    PurchaseViewSet,   
+    PurchaseItemViewSet    
 )
 
 
@@ -41,5 +45,34 @@ router.register(
     basename="inventory-report"
 )
 
+router.register(
+    "suppliers",
+    SupplierViewSet,
+    basename="suppliers"
+)
 
-urlpatterns = router.urls
+router.register(
+    "purchases",
+    PurchaseViewSet,
+    basename="purchases"
+)
+
+purchase_router = routers.NestedDefaultRouter(
+    router,
+    "purchases",
+    lookup="purchase"
+)
+
+purchase_router.register(
+    "items",
+    PurchaseItemViewSet,
+    basename="purchase-items"
+)
+
+
+urlpatterns = (
+    router.urls
+    + purchase_router.urls
+)
+
+
