@@ -1,3 +1,6 @@
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncDate
+
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -329,6 +332,35 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
                 "status": order.status,
             }
         )       
+
+
+       
+class SalesReportViewSet(
+    viewsets.ViewSet
+):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def list(self, request):
+
+        queryset = Order.objects.filter(
+            user=request.user
+        ).annotate(
+            day=TruncDate("created_at")
+        ).values(
+            "day"
+        ).annotate(
+            order_count=Count("id"),
+            total_sales=Sum("total_price")
+        ).order_by(
+            "-day"
+        )
+
+        return Response(
+            queryset
+        )
 
 
         

@@ -8,6 +8,7 @@ from .views import (
     CartItemViewSet,
     CheckoutView,
     OrderViewSet,    
+    SalesReportViewSet,
 )
 
 
@@ -37,6 +38,11 @@ router.register(
     basename="orders"
 )
 
+router.register(
+    "sales-report",
+    SalesReportViewSet,
+    basename="sales-report"
+)
 
 
 urlpatterns = (
