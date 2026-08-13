@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import Cart, CartItem
 from .models import Order, OrderItem
 from .models import Expense
+from .models import Customer
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -228,8 +229,22 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_price",
             "created_at",
             "items",
+            "customer",
+            "customer_name",
         ]
         
+    customer_name = serializers.SerializerMethodField()
+
+    def get_customer_name(
+        self,
+        obj
+    ):
+
+        if obj.customer:
+            return str(obj.customer)
+
+        return None
+
         
 class OrderStatusSerializer(serializers.Serializer):
 
@@ -278,5 +293,18 @@ class ExpenseSerializer(
             "store_name",
             "created_at",
         ]
+
+        
+        
+class CustomerSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = Customer
+
+        fields = "__all__"
+
 
         

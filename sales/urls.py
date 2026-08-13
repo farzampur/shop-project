@@ -11,6 +11,7 @@ from .views import (
     SalesReportViewSet,
     DashboardView,
     ExpenseViewSet,
+    CustomerViewSet,
 )
 
 
@@ -50,6 +51,12 @@ router.register(
     "expenses",
     ExpenseViewSet,
     basename="expenses"
+)
+
+router.register(
+    "customers",
+    CustomerViewSet,
+    basename="customers"
 )
 
 

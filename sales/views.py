@@ -20,6 +20,7 @@ from django.db.models import Sum
 from .models import Cart, CartItem
 from .models import Order, OrderItem
 from .models import Expense
+from .models import Customer
 
 from .serializers import (
     CartSerializer,
@@ -30,6 +31,7 @@ from .serializers import (
     OrderSerializer,
     OrderStatusSerializer,
     ExpenseSerializer,
+    CustomerSerializer,
 )
 
 from .services import CheckoutService
@@ -633,6 +635,20 @@ class ExpenseViewSet(
             user=self.request.user
         )
         
+class CustomerViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = CustomerSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        return Customer.objects.all()
+
         
         
 
