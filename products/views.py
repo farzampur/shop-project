@@ -262,7 +262,7 @@ class PurchaseViewSet(
 
     def get_queryset(self):
 
-        return (
+        queryset = (
             Purchase.objects
             .select_related(
                 "supplier",
@@ -270,9 +270,35 @@ class PurchaseViewSet(
                 "user"
             )
             .prefetch_related(
-                "items"
+                "items",
+                "items__product"
+            )
+            .order_by("-id")
+        )
+
+        supplier_id = (
+            self.request.query_params.get(
+                "supplier"
             )
         )
+
+        if supplier_id:
+            queryset = queryset.filter(
+                supplier_id=supplier_id
+            )
+
+        store_id = (
+            self.request.query_params.get(
+                "store"
+            )
+        )
+
+        if store_id:
+            queryset = queryset.filter(
+                store_id=store_id
+            )
+
+        return queryset        
 
     def perform_create(
         self,

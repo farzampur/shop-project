@@ -327,6 +327,37 @@ class PurchaseItem(models.Model):
             *args,
             **kwargs
         )
+        
+        self.purchase.total_amount = sum(
+            item.total_price
+            for item in self.purchase.items.all()
+        )
+
+        self.purchase.save(
+            update_fields=[
+                "total_amount",
+                "updated_at",
+            ]
+        )
+        
+
+    def delete(self, *args, **kwargs):
+
+        purchase = self.purchase
+
+        super().delete(*args, **kwargs)
+
+        purchase.total_amount = sum(
+            item.total_price
+            for item in purchase.items.all()
+        )
+
+        purchase.save(
+            update_fields=[
+                "total_amount",
+                "updated_at",
+            ]
+        )
 
     def __str__(self):
         return (

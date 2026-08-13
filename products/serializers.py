@@ -212,6 +212,17 @@ class PurchaseSerializer(
         read_only=True
     )
 
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True
+    )
+
+    item_count = serializers.SerializerMethodField()
+
+    def get_item_count(self, obj):
+        return obj.items.count()
+
+
     class Meta:
         model = Purchase
 
@@ -227,6 +238,8 @@ class PurchaseSerializer(
             "created_at",
             "items",
             "received",
+            "username",
+            "item_count",
         ]
 
         read_only_fields = [
