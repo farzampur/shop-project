@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import Cart, CartItem
 from .models import Order, OrderItem
+from .models import Expense
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -239,3 +240,43 @@ class OrderStatusSerializer(serializers.Serializer):
             "delivered",
         ]
     )        
+    
+class ExpenseSerializer(
+    serializers.ModelSerializer
+):
+
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True
+    )
+
+    store_name = serializers.CharField(
+        source="store.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = Expense
+
+        fields = [
+            "id",
+            "store",
+            "store_name",
+            "user",
+            "username",
+            "expense_type",
+            "title",
+            "amount",
+            "description",
+            "expense_date",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "user",
+            "username",
+            "store_name",
+            "created_at",
+        ]
+
+        

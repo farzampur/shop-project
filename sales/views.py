@@ -15,9 +15,11 @@ from rest_framework.decorators import action
 from decimal import Decimal
 
 from accounts.models import UserStore
-
+from django.utils import timezone
+from django.db.models import Sum
 from .models import Cart, CartItem
 from .models import Order, OrderItem
+from .models import Expense
 
 from .serializers import (
     CartSerializer,
@@ -27,6 +29,7 @@ from .serializers import (
     CheckoutSerializer,
     OrderSerializer,
     OrderStatusSerializer,
+    ExpenseSerializer,
 )
 
 from .services import CheckoutService
@@ -36,6 +39,11 @@ from .services import OrderService
 from .permissions import (
     CartPermission,
     get_user_max_discount,
+)
+
+from products.models import (
+    Product,
+    Inventory,
 )
 
 class CartViewSet(viewsets.ModelViewSet):
@@ -462,3 +470,170 @@ class SalesReportViewSet(
                 "total_profit": total_profit,
             }
         )        
+
+    @action(
+        detail=False,
+        methods=["get"]
+    )
+    def financial(self, request):
+
+        expense_total = (
+            Expense.objects.filter(
+                user=request.user
+            ).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
+        total_sales = (
+            Order.objects.filter(
+                user=request.user
+            ).aggregate(
+                total=Sum("total_price")
+            )["total"]
+            or 0
+        )
+
+        return Response(
+            {
+                "sales": total_sales,
+                "expenses": expense_total,
+                "balance":
+                    total_sales -
+                    expense_total,
+            }
+        )
+    
+        
+        
+class DashboardView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        today = timezone.now().date()
+
+        today_orders = Order.objects.filter(
+            created_at__date=today
+        )
+
+        month_orders = Order.objects.filter(
+            created_at__year=today.year,
+            created_at__month=today.month,
+        )
+
+        today_sales = (
+            today_orders.aggregate(
+                total=Sum("total_price")
+            )["total"]
+            or 0
+        )
+
+        month_sales = (
+            month_orders.aggregate(
+                total=Sum("total_price")
+            )["total"]
+            or 0
+        )
+
+        total_products = Product.objects.count()
+
+        total_inventory = (
+            Inventory.objects.aggregate(
+                total=Sum("quantity")
+            )["total"]
+            or 0
+        )
+
+        low_stock_products = (
+            Inventory.objects.filter(
+                quantity__lt=10
+            ).count()
+        )
+        
+        from decimal import Decimal
+
+        total_sales_amount = Decimal("0")
+        total_cost_amount = Decimal("0")
+
+        for item in OrderItem.objects.all():
+
+            total_sales_amount += item.total_price
+
+            total_cost_amount += (
+                item.quantity *
+                item.product.purchase_price
+            )
+
+        total_profit = (
+            total_sales_amount -
+            total_cost_amount
+        )
+
+        expense_total = (
+            Expense.objects.filter(
+                user=request.user
+            ).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
+        net_profit = (
+            total_profit -
+            expense_total
+        )
+
+        return Response(
+            {
+                "today_orders": today_orders.count(),
+                "month_orders": month_orders.count(),
+                "today_sales": today_sales,
+                "month_sales": month_sales,
+                
+                "total_products": total_products,
+                "total_inventory": total_inventory,
+                "low_stock_products": low_stock_products,
+                
+                "total_profit": total_profit,
+                
+                "expense_total": expense_total,
+                "net_profit": net_profit,                
+            }
+        )
+
+
+
+class ExpenseViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = ExpenseSerializer
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        return Expense.objects.filter(
+            user=self.request.user
+        )
+
+    def perform_create(
+        self,
+        serializer
+    ):
+
+        serializer.save(
+            user=self.request.user
+        )
+        
+        
+        
+
+        

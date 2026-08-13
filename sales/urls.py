@@ -9,6 +9,8 @@ from .views import (
     CheckoutView,
     OrderViewSet,    
     SalesReportViewSet,
+    DashboardView,
+    ExpenseViewSet,
 )
 
 
@@ -44,6 +46,12 @@ router.register(
     basename="sales-report"
 )
 
+router.register(
+    "expenses",
+    ExpenseViewSet,
+    basename="expenses"
+)
+
 
 urlpatterns = (
     router.urls
@@ -53,6 +61,12 @@ urlpatterns = (
             "checkout/",
             CheckoutView.as_view(),
             name="checkout",
+        ),
+
+        path(
+            "dashboard/",
+            DashboardView.as_view(),
+            name="dashboard",
         ),
     ]
 )
