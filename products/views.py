@@ -7,6 +7,7 @@ from .serializers import (
     ProductSerializer,
     InventorySerializer,
     InventoryTransactionSerializer,
+    InventoryReportSerializer,
 )
 from .permissions import (
     StoreRolePermission,
@@ -178,6 +179,43 @@ class InventoryTransactionViewSet(
         if product_id:
             queryset = queryset.filter(
                 product_id=product_id
+            )
+
+        return queryset
+
+
+class InventoryReportViewSet(
+    viewsets.ReadOnlyModelViewSet
+):
+
+    serializer_class = (
+        InventoryReportSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get_queryset(self):
+
+        queryset = (
+            Inventory.objects
+            .select_related(
+                "product",
+                "store"
+            )
+            .filter(
+                store__store_users__user=self.request.user
+            )
+        )
+
+        store_id = self.request.query_params.get(
+            "store"
+        )
+
+        if store_id:
+            queryset = queryset.filter(
+                store_id=store_id
             )
 
         return queryset

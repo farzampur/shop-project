@@ -125,4 +125,31 @@ class InventoryTransactionSerializer(
             "created_at",
         ]
 
+
+
+class InventoryReportSerializer(serializers.ModelSerializer):
+
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True
+    )
+
+    store_name = serializers.CharField(
+        source="store.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = Inventory
+
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "store",
+            "store_name",
+            "quantity",
+        ]
+
+
         
