@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 from .models import Cart, CartItem, Order, OrderItem
 from .models import Expense, Customer, CustomerTransaction
+from .models import CashBox, CashBoxTransaction
+
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -317,6 +319,54 @@ class CustomerTransactionSerializer(
         fields = [
             "id",
             "customer",
+            "transaction_type",
+            "amount",
+            "description",
+            "reference_id",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+        ]
+
+
+class CashBoxSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = CashBox
+
+        fields = [
+            "id",
+            "name",
+            "store",
+            "balance",
+            "description",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "balance",
+            "created_at",
+        ]
+
+
+class CashBoxTransactionSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = CashBoxTransaction
+
+        fields = [
+            "id",
+            "cashbox",
             "transaction_type",
             "amount",
             "description",

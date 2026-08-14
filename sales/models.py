@@ -442,6 +442,114 @@ class CustomerTransaction(models.Model):
         
         
         
+class CashBox(models.Model):
 
+    name = models.CharField(
+        max_length=100
+    )
+
+    store = models.ForeignKey(
+        "core.Store",
+        on_delete=models.CASCADE,
+        related_name="cashboxes"
+    )
+
+    balance = models.DecimalField(
+        max_digits=14,
+        decimal_places=3,
+        default=0
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+
+        verbose_name = "صندوق"
+
+        verbose_name_plural = "صندوق‌ها"
+
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "name"],
+                name="unique_cashbox_name_per_store"
+            )
+        ]        
+
+    def __str__(self):
+
+        return (
+            f"{self.name}"
+            f" ({self.store.name})"
+        )
+        
+        
+
+class CashBoxTransaction(models.Model):
+
+    TRANSACTION_TYPES = [
+        ("deposit", "واریز"),
+        ("withdraw", "برداشت"),
+        ("receive", "دریافت"),
+        ("payment", "پرداخت"),
+    ]
+
+    cashbox = models.ForeignKey(
+        CashBox,
+        on_delete=models.CASCADE,
+        related_name="transactions"
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPES
+    )
+
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=3
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    reference_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+
+        verbose_name = "تراکنش صندوق"
+
+        verbose_name_plural = (
+            "تراکنش‌های صندوق"
+        )
+
+        ordering = ["-created_at"]
+
+    def __str__(self):
+
+        return (
+            f"{self.cashbox} - "
+            f"{self.transaction_type}"
+        )
+
+        
 
         

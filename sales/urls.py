@@ -15,6 +15,11 @@ from .views import (
     CustomerReportView,
     CustomerTransactionViewSet,
     CustomerBalanceView,
+    DebtorCustomersView,
+    CreditorCustomersView,
+    CustomerLedgerView,
+    CashBoxViewSet,
+    CashBoxTransactionViewSet,
 )
 
 
@@ -68,6 +73,18 @@ router.register(
     basename="customer-transactions"
 )
 
+router.register(
+    "cashboxes",
+    CashBoxViewSet,
+    basename="cashboxes"
+)
+
+router.register(
+    "cashbox-transactions",
+    CashBoxTransactionViewSet,
+    basename="cashbox-transactions"
+)
+
 
 urlpatterns = (
     router.urls
@@ -93,6 +110,21 @@ urlpatterns = (
             "customers/<int:customer_id>/balance/",
             CustomerBalanceView.as_view(),
             name="customer-balance",
+        ),      
+        path(
+            "customers/debtors/",
+            DebtorCustomersView.as_view(),
+            name="customer-debtors",
+        ),
+        path(
+            "customers/creditors/",
+            CreditorCustomersView.as_view(),
+            name="customer-creditors",
+        ),
+        path(
+            "customers/<int:customer_id>/ledger/",
+            CustomerLedgerView.as_view(),
+            name="customer-ledger",
         ),        
     ]
 )

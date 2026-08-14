@@ -7,6 +7,8 @@ from .models import (
     OrderItem,
     Customer,
     Expense,
+    CashBox,
+    CashBoxTransaction,
 )
 
 # Register your models here.
@@ -213,5 +215,31 @@ class OrderItemAdmin(admin.ModelAdmin):
 
     list_per_page = 25
 
+
+@admin.register(CashBox)
+class CashBoxAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "id",
+        "name",
+        "store",
+        "balance",
+    )
+
+
+@admin.register(
+    CashBoxTransaction
+)
+class CashBoxTransactionAdmin(
+    admin.ModelAdmin
+):
+
+    list_display = (
+        "id",
+        "cashbox",
+        "transaction_type",
+        "amount",
+        "created_at",
+    )
 
     

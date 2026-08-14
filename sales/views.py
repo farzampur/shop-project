@@ -1,26 +1,21 @@
-from django.db.models import Sum, Count, DecimalField
-from django.db.models.functions import TruncDate
-from django.db.models.functions import TruncMonth
-from django.db.models.functions import Coalesce
+from django.db.models import Sum, Count, Max, DecimalField
+from django.db.models.functions import TruncDate, TruncMonth, Coalesce
+from django.db import transaction
 
 from rest_framework import viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import action
-
 from decimal import Decimal
 
 from accounts.models import UserStore
 from django.utils import timezone
-from django.db.models import   Sum, Count, Max
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
-from .models import CustomerTransaction
-
+from .models import CustomerTransaction, CashBox, CashBoxTransaction
 
 from .serializers import (
     CartSerializer,
@@ -33,21 +28,13 @@ from .serializers import (
     ExpenseSerializer,
     CustomerSerializer,
     CustomerTransactionSerializer,
+    CashBoxSerializer,
+    CashBoxTransactionSerializer,
 )
 
-from .services import CheckoutService
-from .services import OrderService
-
-
-from .permissions import (
-    CartPermission,
-    get_user_max_discount,
-)
-
-from products.models import (
-    Product,
-    Inventory,
-)
+from .services import CheckoutService, OrderService
+from .permissions import CartPermission, get_user_max_discount
+from products.models import Product, Inventory
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -69,7 +56,6 @@ class CartViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
 
         store_id = self.request.data.get("store")
-
         if not store_id:
             raise PermissionDenied(
                 "فروشگاه مشخص نشده است."
@@ -88,9 +74,7 @@ class CartViewSet(viewsets.ModelViewSet):
         serializer.save(
             user=self.request.user,
             store_id=store_id
-        )
-        
-        
+        )              
 
 class CartItemViewSet(viewsets.ModelViewSet):
 
@@ -188,7 +172,6 @@ class CartItemViewSet(viewsets.ModelViewSet):
         )
 
         if not created:
-
             new_quantity = item.quantity + quantity
 
             if inventory.quantity < new_quantity:
@@ -250,9 +233,7 @@ class CartItemViewSet(viewsets.ModelViewSet):
 
         serializer.save(
             unit_price=item.product.sale_price
-        )
-        
-        
+        )                
         
 class CheckoutView(APIView):
 
@@ -264,9 +245,7 @@ class CheckoutView(APIView):
         serializer = CheckoutSerializer(
             data=request.data
         )
-
         serializer.is_valid(raise_exception=True)
-
         cart_id = serializer.validated_data["cart_id"]
 
         try:
@@ -296,12 +275,9 @@ class CheckoutView(APIView):
             status=status.HTTP_201_CREATED
         )
 
-
-
 class OrderViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = OrderSerializer
-
     permission_classes = [
         IsAuthenticated,
     ]
@@ -318,14 +294,10 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
         ).order_by("-id")
 
 
-    @action(
-    detail=True,
-    methods=["post"]
-    )
+    @action(detail=True,methods=["post"])
     def change_status(self, request, pk=None):
 
         order = self.get_object()
-
         serializer = OrderStatusSerializer(
             data=request.data
         )
@@ -345,12 +317,8 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
                 "status": order.status,
             }
         )       
-
-
        
-class SalesReportViewSet(
-    viewsets.ViewSet
-):
+class SalesReportViewSet(viewsets.ViewSet):
 
     permission_classes = [
         IsAuthenticated
@@ -375,10 +343,7 @@ class SalesReportViewSet(
             queryset
         )
 
-    @action(
-        detail=False,
-        methods=["get"]
-    )
+    @action(detail=False,methods=["get"])
     def monthly(self, request):
 
         queryset = (
@@ -409,10 +374,7 @@ class SalesReportViewSet(
             queryset
         )
             
-    @action(
-        detail=False,
-        methods=["get"]
-    )
+    @action(detail=False,methods=["get"])
     def top_products(self, request):
 
         queryset = (
@@ -438,26 +400,20 @@ class SalesReportViewSet(
             queryset
         )        
         
-    @action(
-        detail=False,
-        methods=["get"]
-    )
+    @action(detail=False,methods=["get"])
     def profit(self, request):
 
         total_sales = Decimal("0")
         total_cost = Decimal("0")
-
         items = OrderItem.objects.all()
 
         for item in items:
-
             sale_amount = item.total_price
 
             cost_amount = (
                 item.quantity *
                 item.product.purchase_price
             )
-
             total_sales += sale_amount
             total_cost += cost_amount
 
@@ -474,10 +430,7 @@ class SalesReportViewSet(
             }
         )        
 
-    @action(
-        detail=False,
-        methods=["get"]
-    )
+    @action(detail=False,methods=["get"])
     def financial(self, request):
 
         expense_total = (
@@ -506,9 +459,7 @@ class SalesReportViewSet(
                     total_sales -
                     expense_total,
             }
-        )
-    
-        
+        )            
         
 class DashboardView(APIView):
 
@@ -519,7 +470,6 @@ class DashboardView(APIView):
     def get(self, request):
 
         today = timezone.now().date()
-
         today_orders = Order.objects.filter(
             created_at__date=today
         )
@@ -544,7 +494,6 @@ class DashboardView(APIView):
         )
 
         total_products = Product.objects.count()
-
         total_inventory = (
             Inventory.objects.aggregate(
                 total=Sum("quantity")
@@ -558,15 +507,11 @@ class DashboardView(APIView):
             ).count()
         )
         
-        from decimal import Decimal
-
         total_sales_amount = Decimal("0")
         total_cost_amount = Decimal("0")
 
         for item in OrderItem.objects.all():
-
             total_sales_amount += item.total_price
-
             total_cost_amount += (
                 item.quantity *
                 item.product.purchase_price
@@ -596,24 +541,17 @@ class DashboardView(APIView):
                 "today_orders": today_orders.count(),
                 "month_orders": month_orders.count(),
                 "today_sales": today_sales,
-                "month_sales": month_sales,
-                
+                "month_sales": month_sales,                
                 "total_products": total_products,
                 "total_inventory": total_inventory,
-                "low_stock_products": low_stock_products,
-                
-                "total_profit": total_profit,
-                
+                "low_stock_products": low_stock_products,                
+                "total_profit": total_profit,                
                 "expense_total": expense_total,
                 "net_profit": net_profit,                
             }
         )
 
-
-
-class ExpenseViewSet(
-    viewsets.ModelViewSet
-):
+class ExpenseViewSet(viewsets.ModelViewSet):
 
     serializer_class = ExpenseSerializer
 
@@ -636,27 +574,16 @@ class ExpenseViewSet(
             user=self.request.user
         )
         
-class CustomerViewSet(
-    viewsets.ModelViewSet
-):
-
+class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
-
     permission_classes = [
         IsAuthenticated
     ]
-
     def get_queryset(self):
 
-        return Customer.objects.all()
-
+        return Customer.objects.all()        
         
-        
-
-class CustomerReportView(
-    APIView
-):
-
+class CustomerReportView(APIView):
     permission_classes = [
         IsAuthenticated
     ]
@@ -689,25 +616,19 @@ class CustomerReportView(
         result = []
 
         for customer in customers:
-
             result.append(
                 {
                     "id": customer.id,
-
                     "name": str(
                         customer
                     ),
-
                     "mobile":
                         customer.mobile,
-
                     "order_count":
                         customer.order_count,
-
                     "total_purchase":
                         customer.total_purchase
                         or 0,
-
                     "last_order_date":
                         customer.last_order_date,
                 }
@@ -717,11 +638,16 @@ class CustomerReportView(
             result
         )
 
+class CustomerTransactionViewSet(viewsets.ModelViewSet):
+    """
+    مدیریت تراکنش‌های مشتری
 
+    sale    : فروش به مشتری
+    payment : دریافت وجه از مشتری
 
-class CustomerTransactionViewSet(
-    viewsets.ModelViewSet
-):
+    در صورت ثبت payment
+    یک دریافت در صندوق نیز ثبت می‌شود.
+    """
 
     serializer_class = (
         CustomerTransactionSerializer
@@ -733,12 +659,52 @@ class CustomerTransactionViewSet(
 
     queryset = (
         CustomerTransaction.objects
-        .select_related(
-            "customer"
-        )
+        .select_related("customer")
         .order_by("-id")
     )
 
+    def perform_create(
+        self,
+        serializer
+    ):
+        """
+        ثبت تراکنش مشتری
+        """
+
+        customer_tx = serializer.save()
+
+        if (
+            customer_tx.transaction_type
+            == "payment"
+        ):
+
+            cashbox = (
+                CashBox.objects.first()
+            )
+
+            if cashbox:
+
+                cashbox.balance += (
+                    customer_tx.amount
+                )
+
+                cashbox.save(
+                    update_fields=[
+                        "balance",
+                        "updated_at",
+                    ]
+                )
+
+                CashBoxTransaction.objects.create(
+                    cashbox=cashbox,
+                    transaction_type="receive",
+                    amount=customer_tx.amount,
+                    reference_id=customer_tx.id,
+                    description=(
+                        f"دریافت از مشتری "
+                        f"{customer_tx.customer}"
+                    )
+                )
 
 class CustomerBalanceView(APIView):
 
@@ -797,5 +763,275 @@ class CustomerBalanceView(APIView):
             }
         )
 
+class DebtorCustomersView(APIView):
 
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        result = []
+        for customer in Customer.objects.all():
+
+            sales_amount = (
+                CustomerTransaction.objects
+                .filter(
+                    customer=customer,
+                    transaction_type="sale"
+                )
+                .aggregate(
+                    total=Coalesce(
+                        Sum("amount"),
+                        Decimal("0.00"),
+                        output_field=DecimalField()
+                    )
+                )["total"]
+            )
+
+            payment_amount = (
+                CustomerTransaction.objects
+                .filter(
+                    customer=customer,
+                    transaction_type="payment"
+                )
+                .aggregate(
+                    total=Coalesce(
+                        Sum("amount"),
+                        Decimal("0.00"),
+                        output_field=DecimalField()
+                    )
+                )["total"]
+            )
+
+            balance = sales_amount - payment_amount
+            if balance > 0:
+                result.append(
+                    {
+                        "customer_id": customer.id,
+                        "customer_name": str(customer),
+                        "balance": balance,
+                    }
+                )
+
+        result.sort(
+            key=lambda x: x["balance"],
+            reverse=True
+        )
+
+        return Response(result)
         
+class CreditorCustomersView(APIView):
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        result = []
+
+        for customer in Customer.objects.all():
+            sales_amount = (
+                CustomerTransaction.objects
+                .filter(
+                    customer=customer,
+                    transaction_type="sale"
+                )
+                .aggregate(
+                    total=Coalesce(
+                        Sum("amount"),
+                        Decimal("0.00"),
+                        output_field=DecimalField()
+                    )
+                )["total"]
+            )
+
+            payment_amount = (
+                CustomerTransaction.objects
+                .filter(
+                    customer=customer,
+                    transaction_type="payment"
+                )
+                .aggregate(
+                    total=Coalesce(
+                        Sum("amount"),
+                        Decimal("0.00"),
+                        output_field=DecimalField()
+                    )
+                )["total"]
+            )
+
+            balance = sales_amount - payment_amount
+
+            if balance < 0:
+                result.append(
+                    {
+                        "customer_id": customer.id,
+                        "customer_name": str(customer),
+                        "credit": abs(balance),
+                    }
+                )
+
+        return Response(result)
+
+class CustomerLedgerView(APIView):
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request, customer_id):
+
+        customer = Customer.objects.get(
+            id=customer_id
+        )
+
+        transactions = (
+            CustomerTransaction.objects
+            .filter(
+                customer=customer
+            )
+            .order_by(
+                "created_at",
+                "id"
+            )
+        )
+
+        balance = Decimal("0.00")
+
+        result = []
+        for tx in transactions:
+            if tx.transaction_type == "sale":
+                balance += tx.amount
+            elif tx.transaction_type == "payment":
+                balance -= tx.amount
+
+            result.append(
+                {
+                    "id": tx.id,
+                    "date": tx.created_at,
+                    "type": tx.transaction_type,
+                    "amount": tx.amount,
+                    "description": tx.description,
+                    "balance": balance,
+                }
+            )
+
+        return Response(
+            {
+                "customer_id": customer.id,
+                "customer_name": str(customer),
+                "transactions": result,
+                "final_balance": balance,
+            }
+        )
+                       
+class CashBoxViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    مدیریت صندوق‌ها
+    """
+
+    serializer_class = (
+        CashBoxSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        CashBox.objects
+        .select_related("store")
+        .order_by("name")
+    )
+
+
+class CashBoxTransactionViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    مدیریت تراکنش‌های صندوق
+
+    deposit  => واریز
+    receive  => دریافت
+    withdraw => برداشت
+    payment  => پرداخت
+    """
+
+    serializer_class = (
+        CashBoxTransactionSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        CashBoxTransaction.objects
+        .select_related("cashbox")
+        .order_by("-id")
+    )
+
+    @transaction.atomic
+    def perform_create(
+        self,
+        serializer
+    ):
+        """
+        ثبت تراکنش صندوق
+        و بروزرسانی موجودی
+        """
+
+        cashbox = serializer.validated_data[
+            "cashbox"
+        ]
+
+        transaction_type = (
+            serializer.validated_data[
+                "transaction_type"
+            ]
+        )
+
+        amount = serializer.validated_data[
+            "amount"
+        ]
+
+        # اعتبارسنجی قبل از ثبت
+        if transaction_type in (
+            "withdraw",
+            "payment",
+        ):
+
+            if cashbox.balance < amount:
+
+                raise ValidationError(
+                    "موجودی صندوق کافی نیست."
+                )
+
+        # ثبت تراکنش
+        transaction_obj = serializer.save()
+
+        # بروزرسانی موجودی
+        if transaction_type in (
+            "withdraw",
+            "payment",
+        ):
+
+            cashbox.balance -= amount
+
+        elif transaction_type in (
+            "deposit",
+            "receive",
+        ):
+
+            cashbox.balance += amount
+
+        cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+
+        return transaction_obj
