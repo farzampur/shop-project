@@ -348,6 +348,14 @@ class Expense(models.Model):
         related_name="expenses"
     )
 
+    cashbox = models.ForeignKey(
+    "sales.CashBox",
+    on_delete=models.PROTECT,
+    related_name="expenses",
+    null=False,
+    blank=False,
+    )
+    
     user = models.ForeignKey(
         User,
         on_delete=models.PROTECT
@@ -376,7 +384,7 @@ class Expense(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
-
+       
     class Meta:
 
         ordering = [
@@ -551,5 +559,65 @@ class CashBoxTransaction(models.Model):
         )
 
         
+
+class CashTransfer(
+    models.Model
+):
+    """
+    انتقال وجه بین صندوق‌ها
+    """
+
+    from_cashbox = models.ForeignKey(
+        "sales.CashBox",
+        on_delete=models.PROTECT,
+        related_name="outgoing_transfers"
+    )
+
+    to_cashbox = models.ForeignKey(
+        "sales.CashBox",
+        on_delete=models.PROTECT,
+        related_name="incoming_transfers"
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+
+        ordering = [
+            "-id"
+        ]
+
+        verbose_name = (
+            "انتقال صندوق"
+        )
+
+        verbose_name_plural = (
+            "انتقال صندوق‌ها"
+        )
+
+    def __str__(
+        self
+    ):
+        return (
+            f"{self.from_cashbox}"
+            f" -> "
+            f"{self.to_cashbox}"
+        )
 
         

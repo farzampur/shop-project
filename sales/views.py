@@ -1,7 +1,7 @@
-from django.db.models import Sum, Count, Max, DecimalField
+from django.db.models import Sum, Count, Max, Q, DecimalField, Case, When, Value, F
 from django.db.models.functions import TruncDate, TruncMonth, Coalesce
 from django.db import transaction
-
+from datetime import datetime
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -15,7 +15,7 @@ from decimal import Decimal
 from accounts.models import UserStore
 from django.utils import timezone
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
-from .models import CustomerTransaction, CashBox, CashBoxTransaction
+from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer
 
 from .serializers import (
     CartSerializer,
@@ -30,6 +30,7 @@ from .serializers import (
     CustomerTransactionSerializer,
     CashBoxSerializer,
     CashBoxTransactionSerializer,
+    CashTransferSerializer,
 )
 
 from .services import CheckoutService, OrderService
@@ -565,13 +566,44 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             user=self.request.user
         )
 
+    @transaction.atomic
     def perform_create(
         self,
         serializer
     ):
+        """
+        ثبت هزینه و کسر مبلغ از صندوق
+        """
 
-        serializer.save(
+        expense = serializer.save(
             user=self.request.user
+        )
+
+        cashbox = expense.cashbox
+
+        if cashbox.balance < expense.amount:
+
+            raise ValidationError(
+                "موجودی صندوق کافی نیست."
+            )
+
+        cashbox.balance -= expense.amount
+
+        cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+        
+        CashBoxTransaction.objects.create(
+            cashbox=cashbox,
+            transaction_type="payment",
+            amount=expense.amount,
+            reference_id=expense.id,
+            description=(
+                f"Expense: {expense.title}"
+            )
         )
         
 class CustomerViewSet(viewsets.ModelViewSet):
@@ -1035,3 +1067,546 @@ class CashBoxTransactionViewSet(
         )
 
         return transaction_obj
+        
+        
+class FinancialReportView(
+    APIView
+):
+    """
+    گزارش دریافت و پرداخت
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+
+        receipts = (
+            CashBoxTransaction.objects
+            .filter(
+                transaction_type__in=[
+                    "receive",
+                    "deposit",
+                ]
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
+        payments = (
+            CashBoxTransaction.objects
+            .filter(
+                transaction_type__in=[
+                    "payment",
+                    "withdraw",
+                ]
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
+        return Response(
+            {
+                "receipts": receipts,
+                "payments": payments,
+                "net_cash_flow": (
+                    receipts - payments
+                ),
+            }
+        )
+
+
+class CashLedgerView(
+    APIView
+):
+    """
+    گردش صندوق
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+
+        transactions = (
+            CashBoxTransaction.objects
+            .select_related("cashbox")
+            .order_by("-id")
+        )
+
+        data = []
+
+        for tx in transactions:
+
+            data.append(
+                {
+                    "id": tx.id,
+                    "cashbox": tx.cashbox.name,
+                    "type": tx.transaction_type,
+                    "amount": tx.amount,
+                    "reference_id": tx.reference_id,
+                    "description": tx.description,
+                }
+            )
+
+        return Response(data)
+
+
+
+
+class CashBoxBalanceReportView(
+    APIView
+):
+    """
+    گزارش مانده صندوق‌ها
+
+    نمایش:
+    - مانده صندوق
+    - تعداد کل تراکنش‌ها
+    - تعداد دریافت‌ها
+    - تعداد پرداخت‌ها
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+        """
+        دریافت گزارش مانده صندوق‌ها
+        """
+
+        cashboxes = (
+            CashBox.objects
+            .select_related("store")
+            .annotate(
+                transaction_count=Count(
+                    "transactions"
+                ),
+
+                receive_count=Count(
+                    "transactions",
+                    filter=Q(
+                        transactions__transaction_type__in=[
+                            "receive",
+                            "deposit",
+                        ]
+                    )
+                ),
+
+                payment_count=Count(
+                    "transactions",
+                    filter=Q(
+                        transactions__transaction_type__in=[
+                            "payment",
+                            "withdraw",
+                        ]
+                    )
+                ),
+            )
+            .order_by("name")
+        )
+
+        data = []
+
+        for cashbox in cashboxes:
+
+            data.append(
+                {
+                    "id": cashbox.id,
+
+                    "name": (
+                        cashbox.name
+                    ),
+
+                    "store": (
+                        cashbox.store.name
+                    ),
+
+                    "balance": (
+                        cashbox.balance
+                    ),
+
+                    "transaction_count": (
+                        cashbox.transaction_count
+                    ),
+
+                    "receive_count": (
+                        cashbox.receive_count
+                    ),
+
+                    "payment_count": (
+                        cashbox.payment_count
+                    ),
+                }
+            )
+
+        return Response(data)
+        
+        
+
+class DailyCashFlowReportView(
+    APIView
+):
+    """
+    گزارش گردش مالی روزانه
+
+    Query Params:
+
+    start_date=YYYY-MM-DD
+    end_date=YYYY-MM-DD
+
+    Example:
+
+    /api/sales/daily-cash-flow-report/
+
+    /api/sales/daily-cash-flow-report/
+    ?start_date=2026-08-01
+
+    /api/sales/daily-cash-flow-report/
+    ?start_date=2026-08-01
+    &end_date=2026-08-31
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+        """
+        تولید گزارش گردش مالی روزانه
+        """
+
+        start_date = request.GET.get(
+            "start_date"
+        )
+
+        end_date = request.GET.get(
+            "end_date"
+        )
+
+        queryset = (
+            CashBoxTransaction.objects.all()
+        )
+
+        # اعتبارسنجی تاریخ شروع
+        if start_date:
+
+            try:
+
+                datetime.strptime(
+                    start_date,
+                    "%Y-%m-%d"
+                )
+
+            except ValueError:
+
+                raise ValidationError(
+                    {
+                        "start_date":
+                        "فرمت صحیح YYYY-MM-DD است."
+                    }
+                )
+
+            queryset = queryset.filter(
+                created_at__date__gte=
+                start_date
+            )
+
+        # اعتبارسنجی تاریخ پایان
+        if end_date:
+
+            try:
+
+                datetime.strptime(
+                    end_date,
+                    "%Y-%m-%d"
+                )
+
+            except ValueError:
+
+                raise ValidationError(
+                    {
+                        "end_date":
+                        "فرمت صحیح YYYY-MM-DD است."
+                    }
+                )
+
+            queryset = queryset.filter(
+                created_at__date__lte=
+                end_date
+            )
+
+        report = (
+            queryset
+            .annotate(
+                day=TruncDate(
+                    "created_at"
+                )
+            )
+            .values(
+                "day"
+            )
+            .annotate(
+                transaction_count=Count(
+                    "id"
+                ),
+
+                receipts=Coalesce(
+                    Sum(
+                        Case(
+                            When(
+                                transaction_type__in=[
+                                    "deposit",
+                                    "receive",
+                                ],
+                                then=F(
+                                    "amount"
+                                )
+                            ),
+                            default=Value(
+                                0,
+                                output_field=
+                                DecimalField(
+                                    max_digits=12,
+                                    decimal_places=2
+                                )
+                            ),
+                            output_field=
+                            DecimalField(
+                                max_digits=12,
+                                decimal_places=2
+                            )
+                        )
+                    ),
+                    Value(
+                        0,
+                        output_field=
+                        DecimalField(
+                            max_digits=12,
+                            decimal_places=2
+                        )
+                    )
+                ),
+
+                payments=Coalesce(
+                    Sum(
+                        Case(
+                            When(
+                                transaction_type__in=[
+                                    "withdraw",
+                                    "payment",
+                                ],
+                                then=F(
+                                    "amount"
+                                )
+                            ),
+                            default=Value(
+                                0,
+                                output_field=
+                                DecimalField(
+                                    max_digits=12,
+                                    decimal_places=2
+                                )
+                            ),
+                            output_field=
+                            DecimalField(
+                                max_digits=12,
+                                decimal_places=2
+                            )
+                        )
+                    ),
+                    Value(
+                        0,
+                        output_field=
+                        DecimalField(
+                            max_digits=12,
+                            decimal_places=2
+                        )
+                    )
+                ),
+            )
+            .order_by(
+                "-day"
+            )
+        )
+
+        result = []
+
+        for row in report:
+
+            receipts = (
+                row["receipts"]
+                or 0
+            )
+
+            payments = (
+                row["payments"]
+                or 0
+            )
+
+            result.append(
+                {
+                    "day":
+                        row["day"],
+
+                    "transaction_count":
+                        row[
+                            "transaction_count"
+                        ],
+
+                    "receipts":
+                        receipts,
+
+                    "payments":
+                        payments,
+
+                    "net_cash_flow":
+                        receipts -
+                        payments,
+                }
+            )
+
+        return Response(
+            result
+        )
+
+
+
+class CashTransferViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    انتقال وجه بین صندوق‌ها
+    """
+
+    serializer_class = (
+        CashTransferSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        CashTransfer.objects
+        .select_related(
+            "from_cashbox",
+            "to_cashbox",
+        )
+        .order_by("-id")
+    )
+
+    @transaction.atomic
+    def perform_create(
+        self,
+        serializer
+    ):
+
+        from_cashbox = (
+            serializer.validated_data[
+                "from_cashbox"
+            ]
+        )
+
+        to_cashbox = (
+            serializer.validated_data[
+                "to_cashbox"
+            ]
+        )
+
+        amount = (
+            serializer.validated_data[
+                "amount"
+            ]
+        )
+
+        if (
+            from_cashbox.id ==
+            to_cashbox.id
+        ):
+            raise ValidationError(
+                "صندوق مبدا و مقصد "
+                "نمی‌توانند یکسان باشند."
+            )
+
+        if (
+            from_cashbox.balance <
+            amount
+        ):
+            raise ValidationError(
+                "موجودی صندوق مبدا کافی نیست."
+            )
+
+        transfer = serializer.save(
+            created_by=
+            self.request.user
+        )
+
+        # کسر از صندوق مبدا
+
+        from_cashbox.balance -= amount
+
+        from_cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+
+        # افزودن به صندوق مقصد
+
+        to_cashbox.balance += amount
+
+        to_cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+
+        # ثبت تراکنش خروج
+
+        CashBoxTransaction.objects.create(
+            cashbox=from_cashbox,
+            transaction_type="withdraw",
+            amount=amount,
+            reference_id=transfer.id,
+            description=(
+                f"Transfer To "
+                f"{to_cashbox.name}"
+            )
+        )
+
+        # ثبت تراکنش ورود
+
+        CashBoxTransaction.objects.create(
+            cashbox=to_cashbox,
+            transaction_type="deposit",
+            amount=amount,
+            reference_id=transfer.id,
+            description=(
+                f"Transfer From "
+                f"{from_cashbox.name}"
+            )
+        )
+        
+        
