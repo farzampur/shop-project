@@ -1,9 +1,7 @@
 from rest_framework import serializers
 
-from .models import Cart, CartItem
-from .models import Order, OrderItem
-from .models import Expense
-from .models import Customer
+from .models import Cart, CartItem, Order, OrderItem
+from .models import Expense, Customer, CustomerTransaction
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -112,6 +110,7 @@ class CartSerializer(serializers.ModelSerializer):
             "total_price",
             "created_at",
             "updated_at",
+            "customer",
         ]
 
         read_only_fields = [
@@ -305,6 +304,30 @@ class CustomerSerializer(
         model = Customer
 
         fields = "__all__"
+
+
+class CustomerTransactionSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = CustomerTransaction
+
+        fields = [
+            "id",
+            "customer",
+            "transaction_type",
+            "amount",
+            "description",
+            "reference_id",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+        ]
 
 
         

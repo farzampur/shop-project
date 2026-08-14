@@ -33,7 +33,15 @@ class Customer(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+    class Meta:
 
+        ordering = [
+            "-id"
+        ]
+
+        verbose_name = "مشتری"
+
+        verbose_name_plural = "مشتریان"
     def __str__(self):
 
         return (
@@ -69,6 +77,13 @@ class Cart(models.Model):
         verbose_name="آخرین بروزرسانی"
     )
 
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="carts"
+    )
     class Meta:
         verbose_name = "سبد خرید"
         verbose_name_plural = "سبدهای خرید"
@@ -363,14 +378,70 @@ class Expense(models.Model):
     )
 
     class Meta:
-        ordering = ["-expense_date"]
 
+        ordering = [
+            "-expense_date",
+            "-id"
+        ]
+
+        verbose_name = "هزینه"
+
+        verbose_name_plural = "هزینه‌ها"
     def __str__(self):
         return self.title        
         
 
 
 
+class CustomerTransaction(models.Model):
+
+    TRANSACTION_TYPES = [
+        ("sale", "فروش"),
+        ("payment", "پرداخت"),
+    ]
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.CASCADE,
+        related_name="transactions"
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPES
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2
+    )
+
+    description = models.CharField(
+        max_length=255,
+        blank=True
+    )
+
+    reference_id = models.IntegerField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+
+        ordering = [
+            "-id"
+        ]
+
+        verbose_name = "تراکنش مشتری"
+
+        verbose_name_plural = "تراکنش‌های مشتری"
+        
+        
+        
 
 
         

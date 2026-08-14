@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
-from .models import Cart, Order, OrderItem
+from .models import Cart, Order, OrderItem, CustomerTransaction
 
 from products.models import Inventory
 from products.models import InventoryTransaction
@@ -74,15 +74,52 @@ class CheckoutService:
         CartValidationService.validate(cart)
 
         # 2. ایجاد Order
-        order = Order.objects.create(
-            user=cart.user,
-            store=cart.store,
-            status="pending",
-        )
-
+ 
         total_before_discount = 0
         total_discount = 0
         total_price = 0
+
+        for cart_item in cart.items.all():
+
+            line_before_discount = (
+                cart_item.quantity *
+                cart_item.unit_price
+            )
+
+            line_discount = (
+                line_before_discount *
+                cart_item.discount_percent / 100
+            )
+
+            line_total = (
+                line_before_discount -
+                line_discount
+            )
+
+            total_before_discount += line_before_discount
+            total_discount += line_discount
+            total_price += line_total
+
+        order = Order.objects.create(
+            user=cart.user,
+            store=cart.store,
+            customer=cart.customer,
+            status="pending",
+            total_before_discount=total_before_discount,
+            total_discount=total_discount,
+            total_price=total_price,
+        )
+
+        if order.customer:
+                        
+            CustomerTransaction.objects.create(
+                customer=order.customer,
+                transaction_type="sale",
+                amount=order.total_price,
+                reference_id=order.id,
+                description=f"Order #{order.id}"
+            )        
+
 
         # 3. ایجاد OrderItemها
         for cart_item in cart.items.select_related(
@@ -137,40 +174,6 @@ class CheckoutService:
                 ),
                 total_price=item_total_price,
             )
-
-            total_before_discount += (
-                item_total_before_discount
-            )
-
-            total_discount += (
-                total_discount_amount
-            )
-
-            total_price += (
-                item_total_price
-            )
-
-        # 4. ثبت جمع سفارش
-        order.total_before_discount = (
-            total_before_discount
-        )
-
-        order.total_discount = (
-            total_discount
-        )
-
-        order.total_price = (
-            total_price
-        )
-
-        order.save(
-            update_fields=[
-                "total_before_discount",
-                "total_discount",
-                "total_price",
-                "updated_at",
-            ]
-        )
 
         # 5. کاهش موجودی
         for cart_item in cart.items.select_related(

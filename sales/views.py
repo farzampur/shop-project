@@ -1,6 +1,7 @@
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, DecimalField
 from django.db.models.functions import TruncDate
 from django.db.models.functions import TruncMonth
+from django.db.models.functions import Coalesce
 
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -16,11 +17,10 @@ from decimal import Decimal
 
 from accounts.models import UserStore
 from django.utils import timezone
-from django.db.models import Sum
-from .models import Cart, CartItem
-from .models import Order, OrderItem
-from .models import Expense
-from .models import Customer
+from django.db.models import   Sum, Count, Max
+from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
+from .models import CustomerTransaction
+
 
 from .serializers import (
     CartSerializer,
@@ -32,6 +32,7 @@ from .serializers import (
     OrderStatusSerializer,
     ExpenseSerializer,
     CustomerSerializer,
+    CustomerTransactionSerializer,
 )
 
 from .services import CheckoutService
@@ -651,5 +652,150 @@ class CustomerViewSet(
 
         
         
+
+class CustomerReportView(
+    APIView
+):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        customers = (
+            Customer.objects
+            .annotate(
+                order_count=Count(
+                    "orders"
+                ),
+
+                total_purchase=Sum(
+                    "orders__total_price"
+                ),
+
+                last_order_date=Max(
+                    "orders__created_at"
+                ),
+            )
+            .filter(
+                order_count__gt=0
+            )
+            .order_by(
+                "-total_purchase"
+            )[:10]
+        )
+
+        result = []
+
+        for customer in customers:
+
+            result.append(
+                {
+                    "id": customer.id,
+
+                    "name": str(
+                        customer
+                    ),
+
+                    "mobile":
+                        customer.mobile,
+
+                    "order_count":
+                        customer.order_count,
+
+                    "total_purchase":
+                        customer.total_purchase
+                        or 0,
+
+                    "last_order_date":
+                        customer.last_order_date,
+                }
+            )
+
+        return Response(
+            result
+        )
+
+
+
+class CustomerTransactionViewSet(
+    viewsets.ModelViewSet
+):
+
+    serializer_class = (
+        CustomerTransactionSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        CustomerTransaction.objects
+        .select_related(
+            "customer"
+        )
+        .order_by("-id")
+    )
+
+
+class CustomerBalanceView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request, customer_id):
+
+        customer = Customer.objects.get(
+            id=customer_id
+        )
+
+        sales_amount = (
+            CustomerTransaction.objects
+            .filter(
+                customer=customer,
+                transaction_type="sale"
+            )
+            .aggregate(
+                total=Coalesce(
+                    Sum("amount"),
+                    Decimal("0.00"),
+                    output_field=DecimalField()
+                )
+            )["total"]
+        )
+
+        payment_amount = (
+            CustomerTransaction.objects
+            .filter(
+                customer=customer,
+                transaction_type="payment"
+            )
+            .aggregate(
+                total=Coalesce(
+                    Sum("amount"),
+                    Decimal("0.00"),
+                    output_field=DecimalField()
+                )
+            )["total"]
+        )
+
+        balance = (
+            sales_amount -
+            payment_amount
+        )
+
+        return Response(
+            {
+                "customer_id": customer.id,
+                "customer_name": str(customer),
+                "sales": sales_amount,
+                "payments": payment_amount,
+                "balance": balance,
+            }
+        )
+
 
         

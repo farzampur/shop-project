@@ -12,6 +12,9 @@ from .views import (
     DashboardView,
     ExpenseViewSet,
     CustomerViewSet,
+    CustomerReportView,
+    CustomerTransactionViewSet,
+    CustomerBalanceView,
 )
 
 
@@ -59,6 +62,12 @@ router.register(
     basename="customers"
 )
 
+router.register(
+    "customer-transactions",
+    CustomerTransactionViewSet,
+    basename="customer-transactions"
+)
+
 
 urlpatterns = (
     router.urls
@@ -75,5 +84,15 @@ urlpatterns = (
             DashboardView.as_view(),
             name="dashboard",
         ),
+        path(
+            "customer-report/",
+            CustomerReportView.as_view(),
+            name="customer-report",
+        ),
+        path(
+            "customers/<int:customer_id>/balance/",
+            CustomerBalanceView.as_view(),
+            name="customer-balance",
+        ),        
     ]
 )
