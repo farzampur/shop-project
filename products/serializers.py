@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseItem
+from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseItem, SupplierTransaction
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -210,7 +210,7 @@ class PurchaseSerializer(
     )
 
     received = serializers.BooleanField(
-        read_only=True
+        required=False
     )
 
     username = serializers.CharField(
@@ -250,4 +250,72 @@ class PurchaseSerializer(
         ]
         
         
+class SupplierTransactionSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Serializer تراکنش مالی تأمین‌کننده.
+    """
+
+    class Meta:
+
+        model = SupplierTransaction
+
+        fields = [
+            "id",
+            "supplier",
+            "transaction_type",
+            "amount",
+            "reference_id",
+            "description",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+        ]
+
+
+class SupplierPaymentSerializer(
+    serializers.ModelSerializer
+):
+    """
+    Serializer ثبت پرداخت به تأمین‌کننده.
+    """
+
+    class Meta:
+        model = SupplierTransaction
+
+        fields = [
+            "id",
+            "supplier",
+            "amount",
+            "reference_id",
+            "description",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "reference_id",
+            "created_at",
+        ]
+
+    def validate_amount(
+        self,
+        value
+    ):
+        """
+        جلوگیری از مبلغ صفر یا منفی.
+        """
+
+        if value <= 0:
+            raise serializers.ValidationError(
+                "مبلغ پرداخت باید بیشتر از صفر باشد."
+            )
+
+        return value
+
+
         

@@ -367,4 +367,72 @@ class PurchaseItem(models.Model):
         )
 
 
-       
+class SupplierTransaction(models.Model):
+    """
+    ثبت گردش مالی تأمین‌کننده.
+
+    purchase   : ایجاد بدهی بابت خرید
+    payment    : پرداخت به تأمین‌کننده
+    return     : برگشت خرید
+    adjustment : اصلاح حساب
+    """
+
+    TRANSACTION_TYPES = [
+        ("purchase", "خرید"),
+        ("payment", "پرداخت"),
+        ("return", "برگشت خرید"),
+        ("adjustment", "اصلاح حساب"),
+    ]
+
+    supplier = models.ForeignKey(
+        Supplier,
+        on_delete=models.PROTECT,
+        related_name="transactions"
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TRANSACTION_TYPES
+    )
+
+    amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2
+    )
+
+    reference_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    description = models.TextField(
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        ordering = [
+            "-created_at",
+            "-id"
+        ]
+
+        verbose_name = (
+            "تراکنش تأمین‌کننده"
+        )
+
+        verbose_name_plural = (
+            "تراکنش‌های تأمین‌کنندگان"
+        )
+
+    def __str__(self):
+        return (
+            f"{self.supplier.name} - "
+            f"{self.transaction_type} - "
+            f"{self.amount}"
+        )
+        
+        
+        

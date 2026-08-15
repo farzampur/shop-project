@@ -20,6 +20,9 @@ from .views import (
     StoreInventorySummaryView,
     InventoryReportView,
     InventoryDashboardView,
+    SupplierTransactionViewSet,
+    SupplierPaymentViewSet,
+
 )
 
 
@@ -79,6 +82,17 @@ purchase_router.register(
     basename="purchase-items"
 )
 
+router.register(
+    "supplier-transactions",
+    SupplierTransactionViewSet,
+    basename="supplier-transactions"
+)
+
+router.register(
+    "supplier-payments",
+    SupplierPaymentViewSet,
+    basename="supplier-payments"
+)
 
 urlpatterns = (
     router.urls

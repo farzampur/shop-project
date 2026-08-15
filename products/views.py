@@ -3,8 +3,11 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
 from django.db.models import Count, Q, Sum, F, DecimalField, ExpressionWrapper
+from decimal import Decimal
 
 from .services import PurchaseService
 
@@ -16,8 +19,12 @@ from .models import (
     Supplier,
     Purchase,
     PurchaseItem,
+    SupplierTransaction,
 )
-
+from sales.models import (
+    CashBox,
+    CashBoxTransaction,
+)
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
@@ -26,7 +33,9 @@ from .serializers import (
     InventoryReportSerializer,
     SupplierSerializer,
     PurchaseSerializer,
-    PurchaseItemSerializer,    
+    PurchaseItemSerializer,   
+    SupplierTransactionSerializer, 
+    SupplierPaymentSerializer,    
 )
 from .permissions import (
     StoreRolePermission,
@@ -256,85 +265,134 @@ class SupplierViewSet(
 class PurchaseViewSet(
     viewsets.ModelViewSet
 ):
+    """
+    مدیریت خرید از تأمین‌کنندگان.
 
-    serializer_class = PurchaseSerializer
+    وظایف:
+    - ایجاد خرید
+    - مشاهده خریدها
+    - ویرایش خرید
+    - حذف خرید
+    - ثبت خودکار بدهی تأمین‌کننده
+      هنگام دریافت خرید
+    """
+
+    serializer_class = (
+        PurchaseSerializer
+    )
 
     permission_classes = [
         IsAuthenticated
     ]
 
-    def get_queryset(self):
-
-        queryset = (
-            Purchase.objects
-            .select_related(
-                "supplier",
-                "store",
-                "user"
-            )
-            .prefetch_related(
-                "items",
-                "items__product"
-            )
-            .order_by("-id")
+    queryset = (
+        Purchase.objects
+        .select_related(
+            "supplier",
+            "store",
+            "user",
         )
-
-        supplier_id = self.request.query_params.get(
-            "supplier"
+        .prefetch_related(
+            "items__product"
         )
-
-        if supplier_id:
-            queryset = queryset.filter(
-                supplier_id=supplier_id
-            )
-
-        store_id = self.request.query_params.get(
-            "store"
+        .order_by(
+            "-created_at",
+            "-id",
         )
+    )
 
-        if store_id:
-            queryset = queryset.filter(
-                store_id=store_id
-            )
+    @transaction.atomic
+    def perform_create(
+        self,
+        serializer
+    ):
+        """
+        ایجاد خرید جدید.
 
-        return queryset
+        اگر خرید از ابتدا با
+        received=True ثبت شود،
+        بدهی تأمین‌کننده نیز ایجاد می‌شود.
+        """
 
-    def perform_create(self, serializer):
-
-        serializer.save(
+        purchase = serializer.save(
             user=self.request.user
         )
 
-    @action(
-        detail=True,
-        methods=["post"]
-    )
-    def receive(self, request, pk=None):
+        if (
+            purchase.received
+            and purchase.total_amount > 0
+        ):
 
-        purchase = self.get_object()
-
-        try:
-
-            purchase = PurchaseService.receive_purchase(
+            self._create_supplier_debt(
                 purchase
             )
 
-        except ValueError as e:
+    @transaction.atomic
+    def perform_update(
+        self,
+        serializer
+    ):
+        """
+        ویرایش خرید.
 
-            return Response(
-                {
-                    "detail": str(e)
-                },
-                status=status.HTTP_400_BAD_REQUEST
+        اگر خرید قبلاً دریافت نشده بوده
+        و اکنون received=True شود،
+        بدهی تأمین‌کننده ثبت می‌شود.
+        """
+
+        purchase = self.get_object()
+
+        old_received = (
+            purchase.received
+        )
+
+        purchase = serializer.save()
+
+        if (
+            not old_received
+            and purchase.received
+            and purchase.total_amount > 0
+        ):
+            self._create_supplier_debt(
+                purchase
             )
 
-        return Response(
-            {
-                "id": purchase.id,
-                "received": purchase.received
-            },
-            status=status.HTTP_200_OK
-        )        
+    def _create_supplier_debt(
+        self,
+        purchase
+    ):
+        """
+        ثبت بدهی خرید برای تأمین‌کننده.
+
+        برای جلوگیری از ثبت دوباره،
+        وجود تراکنش قبلی با همین خرید
+        بررسی می‌شود.
+        """
+
+        exists = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=purchase.supplier,
+                transaction_type="purchase",
+                reference_id=purchase.id,
+            )
+            .exists()
+        )
+
+        if exists:
+            return
+
+        SupplierTransaction.objects.create(
+            supplier=purchase.supplier,
+            transaction_type="purchase",
+            amount=purchase.total_amount,
+            reference_id=purchase.id,
+            description=(
+                f"بدهی بابت خرید "
+                f"شماره {purchase.id}"
+            ),
+        )     
+        
         
 class PurchaseItemViewSet(
     viewsets.ModelViewSet
@@ -1343,4 +1401,215 @@ class InventoryDashboardView(APIView):
             }
         )
 
+
+class SupplierTransactionViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    مدیریت تراکنش‌های تأمین‌کننده.
+    """
+
+    serializer_class = (
+        SupplierTransactionSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        SupplierTransaction.objects
+        .select_related("supplier")
+        .order_by(
+            "-created_at",
+            "-id"
+        )
+    )
+
+
+class SupplierPaymentViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    ثبت و مدیریت پرداخت به تأمین‌کننده.
+
+    هنگام ثبت پرداخت:
+    1- بدهی تأمین‌کننده بررسی می‌شود.
+    2- تراکنش payment برای تأمین‌کننده ثبت می‌شود.
+    3- تراکنش payment برای صندوق ثبت می‌شود.
+    4- موجودی صندوق کاهش پیدا می‌کند.
+    """
+
+    serializer_class = (
+        SupplierPaymentSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        SupplierTransaction.objects
+        .filter(
+            transaction_type="payment"
+        )
+        .select_related(
+            "supplier"
+        )
+        .order_by(
+            "-created_at",
+            "-id",
+        )
+    )
+
+    @transaction.atomic
+    def perform_create(
+        self,
+        serializer
+    ):
+        """
+        ثبت پرداخت به تأمین‌کننده
+        و کسر مبلغ از صندوق.
+        """
+
+        supplier = (
+            serializer.validated_data[
+                "supplier"
+            ]
+        )
+
+        amount = (
+            serializer.validated_data[
+                "amount"
+            ]
+        )
+
+        # --------------------------------
+        # محاسبه بدهی فعلی تأمین‌کننده
+        # --------------------------------
+
+        purchase_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="purchase",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        payment_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="payment",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        return_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="return",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        current_debt = (
+            purchase_total
+            - payment_total
+            - return_total
+        )
+
+        # --------------------------------
+        # کنترل مبلغ پرداخت
+        # --------------------------------
+
+        if amount <= 0:
+            raise ValidationError(
+                "مبلغ پرداخت باید بیشتر از صفر باشد."
+            )
+
+        if amount > current_debt:
+            raise ValidationError(
+                "مبلغ پرداخت بیشتر از بدهی تأمین‌کننده است."
+            )
+
+        # --------------------------------
+        # انتخاب صندوق
+        # --------------------------------
+
+        cashbox = (
+            CashBox.objects
+            .filter(
+                store__store_users__user=
+                self.request.user
+            )
+            .order_by("id")
+            .first()
+        )
+
+        if not cashbox:
+            raise ValidationError(
+                "صندوقی برای پرداخت پیدا نشد."
+            )
+
+        # --------------------------------
+        # کنترل موجودی صندوق
+        # --------------------------------
+
+        if cashbox.balance < amount:
+            raise ValidationError(
+                "موجودی صندوق برای این پرداخت کافی نیست."
+            )
+
+        # --------------------------------
+        # ثبت تراکنش تأمین‌کننده
+        # --------------------------------
+
+        supplier_tx = serializer.save(
+            transaction_type="payment"
+        )
+
+        # --------------------------------
+        # کاهش موجودی صندوق
+        # --------------------------------
+
+        cashbox.balance -= amount
+
+        cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+
+        # --------------------------------
+        # ثبت تراکنش صندوق
+        # --------------------------------
+
+        CashBoxTransaction.objects.create(
+            cashbox=cashbox,
+            transaction_type="payment",
+            amount=amount,
+            reference_id=supplier_tx.id,
+            description=(
+                f"پرداخت به تأمین‌کننده "
+                f"{supplier.name}"
+            ),
+        )
         
+        
+        
+        
+
+    
