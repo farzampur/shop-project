@@ -31,6 +31,7 @@ from .views import (
     SupplierComprehensiveReportView,
     PurchaseReturnViewSet,
     SupplierSettleView,
+    PurchaseReceiptPDFView    
 )
 
 
@@ -205,6 +206,11 @@ urlpatterns = [
         "suppliers/<int:supplier_id>/settle/",
         SupplierSettleView.as_view(),
         name="supplier-settle",
+    ), 
+    path(
+        "purchases/<int:purchase_id>/receipt/",
+        PurchaseReceiptPDFView.as_view(),
+        name="purchase-receipt",
     ),    
 ]
 

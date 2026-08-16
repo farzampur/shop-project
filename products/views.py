@@ -11,7 +11,8 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal
 from datetime import datetime
 from django.shortcuts import get_object_or_404
-from .services import PurchaseService
+from django.http import FileResponse
+from .services import PurchaseService, build_purchase_receipt_pdf
 
 from .models import (
     Category,
@@ -3024,4 +3025,47 @@ class SupplierSettleView(APIView):
                     cashbox.name,
             }
         )
+        
+        
+class PurchaseReceiptPDFView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        purchase_id
+    ):
+
+        purchase = get_object_or_404(
+            Purchase.objects
+            .prefetch_related(
+                "items__product"
+            )
+            .select_related(
+                "supplier",
+                "store",
+                "user",
+            ),
+            id=purchase_id,
+        )
+
+        pdf_buffer = (
+            build_purchase_receipt_pdf(
+                purchase
+            )
+        )
+
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=(
+                f"purchase-receipt-"
+                f"{purchase.id}.pdf"
+            ),
+            content_type="application/pdf",
+        )
+
         

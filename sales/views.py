@@ -5,7 +5,7 @@ from datetime import datetime
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
-
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -16,6 +16,13 @@ from accounts.models import UserStore
 from django.utils import timezone
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
 from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer
+
+from django.http import FileResponse
+
+from .services import (
+    build_invoice_pdf,
+    build_thermal_receipt_pdf,
+)
 
 from .serializers import (
     CartSerializer,
@@ -33,7 +40,7 @@ from .serializers import (
     CashTransferSerializer,
 )
 
-from .services import CheckoutService, OrderService
+from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
 from products.models import Product, Inventory
 
@@ -1609,4 +1616,85 @@ class CashTransferViewSet(
             )
         )
         
+
+class InvoicePDFView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        order_id
+    ):
+
+        order = get_object_or_404(
+            Order.objects
+            .prefetch_related(
+                "items"
+            )
+            .select_related(
+                "store",
+                "user",
+            ),
+            id=order_id,
+            user=request.user,
+        )
+
+        pdf_buffer = (
+            build_invoice_pdf(order)
+        )
+
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=(
+                f"invoice-{order.id}.pdf"
+            ),
+            content_type="application/pdf",
+        )
+
+
+class ThermalReceiptPDFView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        order_id
+    ):
+
+        order = get_object_or_404(
+            Order.objects
+            .prefetch_related(
+                "items"
+            )
+            .select_related(
+                "store",
+                "user",
+                "customer",
+            ),
+            id=order_id,
+            user=request.user,
+        )
+
+        pdf_buffer = (
+            build_thermal_receipt_pdf(
+                order
+            )
+        )
+
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=(
+                f"receipt-{order.id}.pdf"
+            ),
+            content_type="application/pdf",
+        )
+
         

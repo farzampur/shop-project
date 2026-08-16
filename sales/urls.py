@@ -25,6 +25,8 @@ from .views import (
     CashBoxBalanceReportView,
     DailyCashFlowReportView,
     CashTransferViewSet,
+    InvoicePDFView,
+    ThermalReceiptPDFView,    
 )
 
 
@@ -156,6 +158,16 @@ urlpatterns = (
             "daily-cash-flow-report/",
             DailyCashFlowReportView.as_view(),
             name="daily-cash-flow-report",
+        ), 
+        path(
+            "orders/<int:order_id>/invoice/",
+            InvoicePDFView.as_view(),
+            name="order-invoice-pdf",
+        ),  
+        path(
+            "orders/<int:order_id>/thermal-receipt/",
+            ThermalReceiptPDFView.as_view(),
+            name="order-thermal-receipt",
         ),        
     ]
 )
