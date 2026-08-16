@@ -435,4 +435,74 @@ class SupplierTransaction(models.Model):
         )
         
         
+class PurchaseReturn(models.Model):
+    """
+    برگشت کالا به تأمین‌کننده.
+    """
+
+    purchase = models.ForeignKey(
+        Purchase,
+        on_delete=models.PROTECT,
+        related_name="returns",
+        verbose_name="خرید"
+    )
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="purchase_returns",
+        verbose_name="کالا"
+    )
+
+    quantity = models.DecimalField(
+        max_digits=15,
+        decimal_places=3,
+        verbose_name="مقدار برگشتی"
+    )
+
+    unit_price = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        verbose_name="قیمت واحد"
+    )
+
+    total_amount = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name="مبلغ برگشت"
+    )
+
+    description = models.TextField(
+        blank=True,
+        verbose_name="توضیحات"
+    )
+
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        verbose_name="ثبت‌کننده"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="تاریخ ثبت"
+    )
+
+    def save(self, *args, **kwargs):
+
+        self.total_amount = (
+            self.quantity * self.unit_price
+        )
+
+        super().save(
+            *args,
+            **kwargs
+        )
+
+    def __str__(self):
+        return (
+            f"برگشت خرید #{self.purchase_id} - "
+            f"{self.product.name}"
+        )
         

@@ -7,7 +7,6 @@ from .models import (
     InventoryTransaction,
 )
 
-
 class PurchaseService:
 
     @staticmethod
@@ -27,27 +26,60 @@ class PurchaseService:
 
         for item in purchase.items.all():
 
+            # ---------------------------------
+            # بررسی تراکنش قبلی این قلم خرید
+            # ---------------------------------
+
+            inventory_transaction = (
+                InventoryTransaction.objects
+                .filter(
+                    product=item.product,
+                    store=purchase.store,
+                    transaction_type=(
+                        InventoryTransaction.TYPE_PURCHASE
+                    ),
+                    reference_id=purchase.id,
+                )
+                .first()
+            )
+
+            # اگر قبلاً ثبت شده، نباید موجودی
+            # دوباره افزایش پیدا کند.
+            if inventory_transaction:
+                continue
+
+            # ---------------------------------
+            # پیدا کردن موجودی
+            # ---------------------------------
+
             inventory = (
                 Inventory.objects
                 .select_for_update()
                 .filter(
                     product=item.product,
-                    store=purchase.store
+                    store=purchase.store,
                 )
                 .first()
             )
+
+            # ---------------------------------
+            # ایجاد / افزایش موجودی
+            # ---------------------------------
 
             if inventory is None:
 
                 inventory = Inventory.objects.create(
                     product=item.product,
                     store=purchase.store,
-                    quantity=item.quantity
+                    quantity=item.quantity,
+                    min_quantity=0,
                 )
 
             else:
 
-                inventory.quantity += item.quantity
+                inventory.quantity += (
+                    item.quantity
+                )
 
                 inventory.save(
                     update_fields=[
@@ -56,14 +88,26 @@ class PurchaseService:
                     ]
                 )
 
+            # ---------------------------------
+            # ثبت گردش انبار
+            # ---------------------------------
+
             InventoryTransaction.objects.create(
                 product=item.product,
                 store=purchase.store,
-                transaction_type="purchase",
+                transaction_type=(
+                    InventoryTransaction.TYPE_PURCHASE
+                ),
                 quantity=item.quantity,
                 reference_id=purchase.id,
-                description=f"Purchase #{purchase.id}"
+                description=(
+                    f"Purchase #{purchase.id}"
+                ),
             )
+
+        # -------------------------------------
+        # دریافت خرید
+        # -------------------------------------
 
         purchase.received = True
 
@@ -74,5 +118,4 @@ class PurchaseService:
             ]
         )
 
-        return purchase        
-        
+        return purchase

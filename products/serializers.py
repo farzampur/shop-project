@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseItem, SupplierTransaction
+from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -317,5 +317,51 @@ class SupplierPaymentSerializer(
 
         return value
 
+
+class PurchaseReturnSerializer(
+    serializers.ModelSerializer
+):
+    product_name = serializers.CharField(
+        source="product.name",
+        read_only=True
+    )
+
+    supplier_name = serializers.CharField(
+        source="purchase.supplier.name",
+        read_only=True
+    )
+
+    store_name = serializers.CharField(
+        source="purchase.store.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = PurchaseReturn
+
+        fields = [
+            "id",
+            "purchase",
+            "product",
+            "product_name",
+            "supplier_name",
+            "store_name",
+            "quantity",
+            "unit_price",
+            "total_amount",
+            "description",
+            "created_by",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "product_name",
+            "supplier_name",
+            "store_name",
+            "total_amount",
+            "created_by",
+            "created_at",
+        ]
 
         

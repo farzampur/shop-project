@@ -6,9 +6,11 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
-from django.db.models import Count, Q, Sum, F, DecimalField, ExpressionWrapper
+from django.db.models import Count, Avg, Max, Sum, Q, F, DecimalField, ExpressionWrapper, Value
+from django.db.models.functions import Coalesce
 from decimal import Decimal
-
+from datetime import datetime
+from django.shortcuts import get_object_or_404
 from .services import PurchaseService
 
 from .models import (
@@ -19,6 +21,7 @@ from .models import (
     Supplier,
     Purchase,
     PurchaseItem,
+    PurchaseReturn,
     SupplierTransaction,
 )
 from sales.models import (
@@ -36,6 +39,7 @@ from .serializers import (
     PurchaseItemSerializer,   
     SupplierTransactionSerializer, 
     SupplierPaymentSerializer,    
+    PurchaseReturnSerializer,
 )
 from .permissions import (
     StoreRolePermission,
@@ -1610,6 +1614,1414 @@ class SupplierPaymentViewSet(
         
         
         
+class SupplierBalanceView(APIView):
+    """
+    نمایش مانده حساب یک تأمین‌کننده.
+
+    purchase:
+        افزایش بدهی به تأمین‌کننده
+
+    payment:
+        کاهش بدهی
+
+    return:
+        کاهش بدهی
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        supplier_id
+    ):
+        """
+        محاسبه مانده حساب تأمین‌کننده.
+        """
+
+        supplier = get_object_or_404(
+            Supplier,
+            id=supplier_id
+        )
+
+        purchase_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="purchase",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        payment_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="payment",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        return_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="return",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        balance = (
+            purchase_total
+            - payment_total
+            - return_total
+        )
+
+        return Response(
+            {
+                "supplier_id":
+                    supplier.id,
+
+                "supplier_name":
+                    supplier.name,
+
+                "purchases":
+                    purchase_total,
+
+                "payments":
+                    payment_total,
+
+                "returns":
+                    return_total,
+
+                "balance":
+                    balance,
+            }
+        )
+
+class SupplierLedgerView(APIView):
+    """
+    گردش حساب تأمین‌کننده.
+
+    خرید:
+        افزایش مانده بدهی
+
+    پرداخت:
+        کاهش مانده بدهی
+
+    برگشت:
+        کاهش مانده بدهی
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        supplier_id
+    ):
+        """
+        نمایش تمام تراکنش‌های تأمین‌کننده
+        همراه با مانده لحظه‌ای.
+        """
+
+        supplier = get_object_or_404(
+            Supplier,
+            id=supplier_id
+        )
+
+        transactions = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier
+            )
+            .order_by(
+                "created_at",
+                "id"
+            )
+        )
+
+        balance = Decimal("0.00")
+
+        result = []
+
+        for tx in transactions:
+
+            if tx.transaction_type == "purchase":
+                balance += tx.amount
+
+            elif tx.transaction_type in (
+                "payment",
+                "return",
+            ):
+                balance -= tx.amount
+
+            result.append(
+                {
+                    "id": tx.id,
+                    "date": tx.created_at,
+                    "type": tx.transaction_type,
+                    "amount": tx.amount,
+                    "reference_id":
+                        tx.reference_id,
+                    "description":
+                        tx.description,
+                    "balance": balance,
+                }
+            )
+
+        return Response(
+            {
+                "supplier_id":
+                    supplier.id,
+
+                "supplier_name":
+                    supplier.name,
+
+                "transactions":
+                    result,
+
+                "final_balance":
+                    balance,
+            }
+        )
+        
+class DebtorSuppliersView(APIView):
+    """
+    لیست تأمین‌کنندگانی که از فروشگاه طلب دارند.
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+        """
+        محاسبه مانده حساب تمام تأمین‌کنندگان.
+        """
+
+        suppliers = (
+            Supplier.objects
+            .prefetch_related(
+                "transactions"
+            )
+        )
+
+        result = []
+
+        for supplier in suppliers:
+
+            purchase_total = Decimal(
+                "0.00"
+            )
+
+            payment_total = Decimal(
+                "0.00"
+            )
+
+            return_total = Decimal(
+                "0.00"
+            )
+
+            for tx in (
+                supplier.transactions.all()
+            ):
+
+                if (
+                    tx.transaction_type
+                    == "purchase"
+                ):
+                    purchase_total += (
+                        tx.amount
+                    )
+
+                elif (
+                    tx.transaction_type
+                    == "payment"
+                ):
+                    payment_total += (
+                        tx.amount
+                    )
+
+                elif (
+                    tx.transaction_type
+                    == "return"
+                ):
+                    return_total += (
+                        tx.amount
+                    )
+
+            balance = (
+                purchase_total
+                - payment_total
+                - return_total
+            )
+
+            if balance > 0:
+
+                result.append(
+                    {
+                        "supplier_id":
+                            supplier.id,
+
+                        "supplier_name":
+                            supplier.name,
+
+                        "purchases":
+                            purchase_total,
+
+                        "payments":
+                            payment_total,
+
+                        "returns":
+                            return_total,
+
+                        "balance":
+                            balance,
+                    }
+                )
+
+        result.sort(
+            key=lambda item:
+                item["balance"],
+            reverse=True
+        )
+
+        return Response(
+            result
+        )
+
+class SupplierPurchaseReportView(APIView):
+    """
+    گزارش خرید هر تأمین‌کننده.
+
+    اطلاعات:
+    - تعداد خرید
+    - مجموع خرید
+    - میانگین مبلغ خرید
+    - تاریخ آخرین خرید
+
+    فیلترها:
+    - supplier_id
+    - start_date=YYYY-MM-DD
+    - end_date=YYYY-MM-DD
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+        """
+        تولید گزارش خرید تأمین‌کنندگان.
+        """
+
+        supplier_id = request.query_params.get(
+            "supplier_id"
+        )
+
+        start_date = request.query_params.get(
+            "start_date"
+        )
+
+        end_date = request.query_params.get(
+            "end_date"
+        )
+
+        # -------------------------
+        # اعتبارسنجی تاریخ شروع
+        # -------------------------
+
+        if start_date:
+            try:
+                datetime.strptime(
+                    start_date,
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                raise ValidationError(
+                    {
+                        "start_date":
+                        "فرمت تاریخ باید YYYY-MM-DD باشد."
+                    }
+                )
+
+        # -------------------------
+        # اعتبارسنجی تاریخ پایان
+        # -------------------------
+
+        if end_date:
+            try:
+                datetime.strptime(
+                    end_date,
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                raise ValidationError(
+                    {
+                        "end_date":
+                        "فرمت تاریخ باید YYYY-MM-DD باشد."
+                    }
+                )
+
+        # -------------------------
+        # بررسی ترتیب تاریخ‌ها
+        # -------------------------
+
+        if (
+            start_date
+            and end_date
+            and start_date > end_date
+        ):
+            raise ValidationError(
+                {
+                    "date":
+                    "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد."
+                }
+            )
+
+        # -------------------------
+        # Query خریدها
+        # -------------------------
+
+        purchases = Purchase.objects.all()
+
+        if supplier_id:
+            purchases = purchases.filter(
+                supplier_id=supplier_id
+            )
+
+        if start_date:
+            purchases = purchases.filter(
+                created_at__date__gte=start_date
+            )
+
+        if end_date:
+            purchases = purchases.filter(
+                created_at__date__lte=end_date
+            )
+
+        # -------------------------
+        # گزارش تأمین‌کنندگان
+        # -------------------------
+
+        suppliers = (
+            Supplier.objects
+            .filter(
+                purchases__in=purchases
+            )
+            .annotate(
+                purchase_count=Count(
+                    "purchases",
+                    distinct=True
+                ),
+
+                total_purchase=Coalesce(
+                    Sum(
+                        "purchases__total_amount",
+                    ),
+                    Value(
+                        0,
+                        output_field=DecimalField(
+                            max_digits=20,
+                            decimal_places=2,
+                        )
+                    ),
+                ),
+
+                average_purchase=Coalesce(
+                    Avg(
+                        "purchases__total_amount",
+                    ),
+                    Value(
+                        0,
+                        output_field=DecimalField(
+                            max_digits=20,
+                            decimal_places=2,
+                        )
+                    ),
+                ),
+
+                last_purchase_date=Max(
+                    "purchases__created_at"
+                ),
+            )
+            .order_by(
+                "-total_purchase",
+                "name",
+            )
+        )
+
+        result = []
+
+        for supplier in suppliers:
+
+            result.append(
+                {
+                    "supplier_id":
+                        supplier.id,
+
+                    "supplier_name":
+                        supplier.name,
+
+                    "purchase_count":
+                        supplier.purchase_count,
+
+                    "total_purchase":
+                        supplier.total_purchase,
+
+                    "average_purchase":
+                        supplier.average_purchase,
+
+                    "last_purchase_date":
+                        supplier.last_purchase_date,
+                }
+            )
+
+        return Response(
+            {
+                "filters": {
+                    "supplier_id":
+                        supplier_id,
+
+                    "start_date":
+                        start_date,
+
+                    "end_date":
+                        end_date,
+                },
+
+                "count":
+                    len(result),
+
+                "items":
+                    result,
+            }
+        )
+
+class SupplierPaymentReportView(APIView):
+    """
+    گزارش پرداخت‌های تأمین‌کنندگان.
+
+    اطلاعات:
+    - تعداد پرداخت
+    - مجموع پرداخت
+    - میانگین پرداخت
+    - آخرین پرداخت
+
+    فیلترها:
+    - supplier_id
+    - start_date=YYYY-MM-DD
+    - end_date=YYYY-MM-DD
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        supplier_id = request.query_params.get(
+            "supplier_id"
+        )
+
+        start_date = request.query_params.get(
+            "start_date"
+        )
+
+        end_date = request.query_params.get(
+            "end_date"
+        )
+
+        # اعتبارسنجی تاریخ‌ها
+        if start_date:
+            try:
+                datetime.strptime(
+                    start_date,
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                raise ValidationError(
+                    {
+                        "start_date":
+                        "فرمت تاریخ باید YYYY-MM-DD باشد."
+                    }
+                )
+
+        if end_date:
+            try:
+                datetime.strptime(
+                    end_date,
+                    "%Y-%m-%d"
+                )
+            except ValueError:
+                raise ValidationError(
+                    {
+                        "end_date":
+                        "فرمت تاریخ باید YYYY-MM-DD باشد."
+                    }
+                )
+
+        if (
+            start_date
+            and end_date
+            and start_date > end_date
+        ):
+            raise ValidationError(
+                {
+                    "date":
+                    "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد."
+                }
+            )
+
+        # فقط تراکنش‌های پرداخت
+        transactions = (
+            SupplierTransaction.objects
+            .filter(
+                transaction_type="payment"
+            )
+        )
+
+        if supplier_id:
+            transactions = transactions.filter(
+                supplier_id=supplier_id
+            )
+
+        if start_date:
+            transactions = transactions.filter(
+                created_at__date__gte=start_date
+            )
+
+        if end_date:
+            transactions = transactions.filter(
+                created_at__date__lte=end_date
+            )
+
+        # گزارش به تفکیک تأمین‌کننده
+        suppliers = (
+            Supplier.objects
+            .filter(
+                transactions__in=transactions
+            )
+            .annotate(
+                payment_count=Count(
+                    "transactions",
+                    filter=Q(
+                        transactions__transaction_type="payment"
+                    ),
+                    distinct=True
+                ),
+
+                total_payment=Coalesce(
+                    Sum(
+                        "transactions__amount",
+                        filter=Q(
+                            transactions__transaction_type="payment"
+                        ),
+                    ),
+                    Value(
+                        0,
+                        output_field=DecimalField(
+                            max_digits=20,
+                            decimal_places=2,
+                        )
+                    ),
+                ),
+
+                average_payment=Coalesce(
+                    Avg(
+                        "transactions__amount",
+                        filter=Q(
+                            transactions__transaction_type="payment"
+                        ),
+                    ),
+                    Value(
+                        0,
+                        output_field=DecimalField(
+                            max_digits=20,
+                            decimal_places=2,
+                        )
+                    ),
+                ),
+
+                last_payment_date=Max(
+                    "transactions__created_at",
+                    filter=Q(
+                        transactions__transaction_type="payment"
+                    ),
+                ),
+            )
+            .order_by(
+                "-total_payment",
+                "name",
+            )
+        )
+
+        result = []
+
+        for supplier in suppliers:
+
+            result.append(
+                {
+                    "supplier_id":
+                        supplier.id,
+
+                    "supplier_name":
+                        supplier.name,
+
+                    "payment_count":
+                        supplier.payment_count,
+
+                    "total_payment":
+                        supplier.total_payment,
+
+                    "average_payment":
+                        supplier.average_payment,
+
+                    "last_payment_date":
+                        supplier.last_payment_date,
+                }
+            )
+
+        return Response(
+            {
+                "filters": {
+                    "supplier_id":
+                        supplier_id,
+
+                    "start_date":
+                        start_date,
+
+                    "end_date":
+                        end_date,
+                },
+
+                "count":
+                    len(result),
+
+                "items":
+                    result,
+            }
+        )
+
+class SupplierBalanceReportView(APIView):
+    """
+    گزارش مانده حساب تمام تأمین‌کنندگان.
+
+    وضعیت‌ها:
+    - debtor     : فروشگاه به تأمین‌کننده بدهکار است
+    - settled    : حساب تسویه است
+    - creditor   : در صورت وجود بستانکاری تأمین‌کننده
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+        """
+        گزارش مانده همه تأمین‌کنندگان.
+
+        Query Params:
+        ?only_debtors=true
+        ?only_settled=true
+        ?only_creditors=true
+        """
+
+        only_debtors = (
+            request.query_params.get(
+                "only_debtors"
+            ) == "true"
+        )
+
+        only_settled = (
+            request.query_params.get(
+                "only_settled"
+            ) == "true"
+        )
+
+        only_creditors = (
+            request.query_params.get(
+                "only_creditors"
+            ) == "true"
+        )
+
+        suppliers = (
+            Supplier.objects
+            .prefetch_related(
+                "transactions"
+            )
+            .order_by("name")
+        )
+
+        result = []
+
+        for supplier in suppliers:
+
+            purchases = Decimal("0.00")
+            payments = Decimal("0.00")
+            returns = Decimal("0.00")
+            adjustments = Decimal("0.00")
+
+            for tx in supplier.transactions.all():
+
+                if tx.transaction_type == "purchase":
+                    purchases += tx.amount
+
+                elif tx.transaction_type == "payment":
+                    payments += tx.amount
+
+                elif tx.transaction_type == "return":
+                    returns += tx.amount
+
+                elif tx.transaction_type == "adjustment":
+                    adjustments += tx.amount
+
+            balance = (
+                purchases
+                - payments
+                - returns
+                + adjustments
+            )
+
+            if balance > 0:
+                status = "debtor"
+            elif balance < 0:
+                status = "creditor"
+            else:
+                status = "settled"
+
+            if only_debtors and status != "debtor":
+                continue
+
+            if only_settled and status != "settled":
+                continue
+
+            if only_creditors and status != "creditor":
+                continue
+
+            result.append(
+                {
+                    "supplier_id": supplier.id,
+                    "supplier_name": supplier.name,
+                    "purchases": purchases,
+                    "payments": payments,
+                    "returns": returns,
+                    "adjustments": adjustments,
+                    "balance": abs(balance),
+                    "status": status,
+                }
+            )
+
+        result.sort(
+            key=lambda item: item["balance"],
+            reverse=True
+        )
+
+        return Response(
+            {
+                "count": len(result),
+                "items": result,
+            }
+        )
+               
+
+class SupplierComprehensiveReportView(APIView):
+    """
+    گزارش جامع تأمین‌کنندگان.
+
+    اطلاعات:
+    - تعداد خرید
+    - مجموع خرید
+    - آخرین خرید
+    - تعداد پرداخت
+    - مجموع پرداخت
+    - مجموع برگشت
+    - آخرین پرداخت
+    - مانده حساب
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(self, request):
+
+        suppliers = (
+            Supplier.objects
+            .prefetch_related(
+                "purchases",
+                "transactions",
+            )
+            .order_by("name")
+        )
+
+        result = []
+
+        for supplier in suppliers:
+
+            # -------------------------
+            # خریدها
+            # -------------------------
+
+            purchases = (
+                supplier.purchases.all()
+            )
+
+            purchase_count = (
+                purchases.count()
+            )
+
+            total_purchase = (
+                purchases.aggregate(
+                    total=Coalesce(
+                        Sum(
+                            "total_amount"
+                        ),
+                        Value(
+                            0,
+                            output_field=DecimalField(
+                                max_digits=20,
+                                decimal_places=2,
+                            )
+                        )
+                    )
+                )["total"]
+            )
+
+            last_purchase = (
+                purchases.aggregate(
+                    last=Max(
+                        "created_at"
+                    )
+                )["last"]
+            )
+
+            # -------------------------
+            # تراکنش‌های تأمین‌کننده
+            # -------------------------
+
+            transactions = (
+                supplier.transactions.all()
+            )
+
+            payment_transactions = [
+                tx
+                for tx in transactions
+                if tx.transaction_type == "payment"
+            ]
+
+            return_transactions = [
+                tx
+                for tx in transactions
+                if tx.transaction_type == "return"
+            ]
+
+            payment_count = len(
+                payment_transactions
+            )
+
+            total_payment = sum(
+                (
+                    tx.amount
+                    for tx in payment_transactions
+                ),
+                Decimal("0.00")
+            )
+
+            total_return = sum(
+                (
+                    tx.amount
+                    for tx in return_transactions
+                ),
+                Decimal("0.00")
+            )
+
+            last_payment = (
+                max(
+                    (
+                        tx.created_at
+                        for tx in payment_transactions
+                    ),
+                    default=None
+                )
+            )
+
+            # -------------------------
+            # مانده
+            # -------------------------
+
+            balance = (
+                total_purchase
+                - total_payment
+                - total_return
+            )
+
+            if balance > 0:
+                status = "debtor"
+
+            elif balance < 0:
+                status = "creditor"
+
+            else:
+                status = "settled"
+
+            result.append(
+                {
+                    "supplier_id":
+                        supplier.id,
+
+                    "supplier_name":
+                        supplier.name,
+
+                    "purchase_count":
+                        purchase_count,
+
+                    "total_purchase":
+                        total_purchase,
+
+                    "payment_count":
+                        payment_count,
+
+                    "total_payment":
+                        total_payment,
+
+                    "total_return":
+                        total_return,
+
+                    "balance":
+                        abs(balance),
+
+                    "status":
+                        status,
+
+                    "last_purchase":
+                        last_purchase,
+
+                    "last_payment":
+                        last_payment,
+                }
+            )
+
+        return Response(
+            {
+                "count": len(result),
+                "items": result,
+            }
+        )
         
 
-    
+
+class PurchaseReturnViewSet(
+    viewsets.ModelViewSet
+):
+    """
+    ثبت برگشت خرید به تأمین‌کننده.
+
+    همزمان:
+    1. موجودی انبار کم می‌شود.
+    2. InventoryTransaction ثبت می‌شود.
+    3. SupplierTransaction(return) ثبت می‌شود.
+    """
+
+    serializer_class = (
+        PurchaseReturnSerializer
+    )
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    queryset = (
+        PurchaseReturn.objects
+        .select_related(
+            "purchase",
+            "purchase__supplier",
+            "purchase__store",
+            "product",
+            "created_by",
+        )
+        .order_by(
+            "-created_at",
+            "-id",
+        )
+    )
+
+    @transaction.atomic
+    def perform_create(
+        self,
+        serializer
+    ):
+        """
+        ثبت برگشت خرید.
+        """
+
+        purchase = (
+            serializer.validated_data[
+                "purchase"
+            ]
+        )
+
+        product = (
+            serializer.validated_data[
+                "product"
+            ]
+        )
+
+        quantity = (
+            serializer.validated_data[
+                "quantity"
+            ]
+        )
+
+        unit_price = (
+            serializer.validated_data[
+                "unit_price"
+            ]
+        )
+
+        if quantity <= 0:
+            raise ValidationError(
+                "مقدار برگشتی باید بیشتر از صفر باشد."
+            )
+
+        if not purchase.received:
+            raise ValidationError(
+                "فقط خرید دریافت‌شده قابل برگشت است."
+            )
+
+        # -------------------------
+        # پیدا کردن قلم خرید
+        # -------------------------
+
+        purchase_item = (
+            PurchaseItem.objects
+            .filter(
+                purchase=purchase,
+                product=product,
+            )
+            .first()
+        )
+
+        if not purchase_item:
+            raise ValidationError(
+                "این کالا در خرید موردنظر وجود ندارد."
+            )
+
+        # -------------------------
+        # میزان قبلاً برگشت‌داده‌شده
+        # -------------------------
+
+        returned_quantity = (
+            PurchaseReturn.objects
+            .filter(
+                purchase=purchase,
+                product=product,
+            )
+            .aggregate(
+                total=Sum("quantity")
+            )["total"]
+            or Decimal("0.000")
+        )
+
+        available_for_return = (
+            purchase_item.quantity
+            - returned_quantity
+        )
+
+        if quantity > available_for_return:
+            raise ValidationError(
+                "مقدار برگشتی بیشتر از مقدار خریداری‌شده است."
+            )
+
+        # -------------------------
+        # موجودی انبار
+        # -------------------------
+
+        inventory = (
+            Inventory.objects
+            .select_for_update()
+            .filter(
+                product=product,
+                store=purchase.store,
+            )
+            .first()
+        )
+
+        if not inventory:
+            raise ValidationError(
+                "موجودی این کالا در فروشگاه پیدا نشد."
+            )
+
+        if inventory.quantity < quantity:
+            raise ValidationError(
+                "موجودی انبار برای این برگشت کافی نیست."
+            )
+
+        # -------------------------
+        # ثبت برگشت
+        # -------------------------
+
+        purchase_return = serializer.save(
+            created_by=self.request.user,
+            unit_price=unit_price,
+        )
+
+        # -------------------------
+        # کاهش موجودی
+        # -------------------------
+
+        inventory.quantity -= quantity
+
+        inventory.save(
+            update_fields=[
+                "quantity",
+                "updated_at",
+            ]
+        )
+
+        # -------------------------
+        # ثبت گردش انبار
+        # -------------------------
+
+        InventoryTransaction.objects.create(
+            product=product,
+            store=purchase.store,
+            transaction_type=(
+                InventoryTransaction.TYPE_RETURN
+            ),
+            quantity=quantity,
+            reference_id=purchase_return.id,
+            description=(
+                f"برگشت خرید #{purchase.id}"
+            ),
+        )
+
+        # -------------------------
+        # کاهش بدهی تأمین‌کننده
+        # -------------------------
+
+        SupplierTransaction.objects.create(
+            supplier=purchase.supplier,
+            transaction_type="return",
+            amount=purchase_return.total_amount,
+            reference_id=purchase_return.id,
+            description=(
+                f"برگشت خرید #{purchase.id}"
+            ),
+        )
+
+
+class SupplierSettleView(APIView):
+    """
+    تسویه کامل بدهی یک تأمین‌کننده.
+
+    مبلغ بدهی به صورت خودکار محاسبه می‌شود.
+    """
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        supplier_id
+    ):
+        supplier = get_object_or_404(
+            Supplier,
+            id=supplier_id
+        )
+
+        # -------------------------
+        # محاسبه بدهی
+        # -------------------------
+
+        purchase_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="purchase",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        payment_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="payment",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        return_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="return",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        adjustment_total = (
+            SupplierTransaction.objects
+            .filter(
+                supplier=supplier,
+                transaction_type="adjustment",
+            )
+            .aggregate(
+                total=Sum("amount")
+            )["total"]
+            or Decimal("0.00")
+        )
+
+        balance = (
+            purchase_total
+            - payment_total
+            - return_total
+            + adjustment_total
+        )
+
+        # -------------------------
+        # حساب تسویه است
+        # -------------------------
+
+        if balance <= 0:
+            return Response(
+                {
+                    "detail":
+                        "حساب این تأمین‌کننده تسویه است.",
+                    "balance":
+                        balance,
+                }
+            )
+
+        # -------------------------
+        # انتخاب صندوق مجاز کاربر
+        # -------------------------
+
+        cashbox = (
+            CashBox.objects
+            .select_for_update()
+            .filter(
+                store__store_users__user=
+                request.user
+            )
+            .order_by("id")
+            .first()
+        )
+
+        if not cashbox:
+            raise ValidationError(
+                "صندوقی برای پرداخت پیدا نشد."
+            )
+
+        # -------------------------
+        # کنترل موجودی صندوق
+        # -------------------------
+
+        if cashbox.balance < balance:
+            raise ValidationError(
+                {
+                    "detail":
+                        "موجودی صندوق برای تسویه کامل کافی نیست.",
+                    "cashbox_balance":
+                        cashbox.balance,
+                    "required_amount":
+                        balance,
+                }
+            )
+
+        # -------------------------
+        # ثبت تراکنش تأمین‌کننده
+        # -------------------------
+
+        supplier_tx = (
+            SupplierTransaction.objects.create(
+                supplier=supplier,
+                transaction_type="payment",
+                amount=balance,
+                description=(
+                    f"تسویه کامل حساب "
+                    f"تأمین‌کننده {supplier.name}"
+                ),
+            )
+        )
+
+        # -------------------------
+        # کاهش موجودی صندوق
+        # -------------------------
+
+        cashbox.balance -= balance
+
+        cashbox.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
+
+        # -------------------------
+        # ثبت تراکنش صندوق
+        # -------------------------
+
+        CashBoxTransaction.objects.create(
+            cashbox=cashbox,
+            transaction_type="payment",
+            amount=balance,
+            reference_id=supplier_tx.id,
+            description=(
+                f"تسویه کامل تأمین‌کننده "
+                f"{supplier.name}"
+            ),
+        )
+
+        return Response(
+            {
+                "supplier_id":
+                    supplier.id,
+
+                "supplier_name":
+                    supplier.name,
+
+                "settled_amount":
+                    balance,
+
+                "remaining_balance":
+                    Decimal("0.00"),
+
+                "cashbox_id":
+                    cashbox.id,
+
+                "cashbox_name":
+                    cashbox.name,
+            }
+        )
+        
