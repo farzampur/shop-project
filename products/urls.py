@@ -31,7 +31,11 @@ from .views import (
     SupplierComprehensiveReportView,
     PurchaseReturnViewSet,
     SupplierSettleView,
-    PurchaseReceiptPDFView    
+    PurchaseReceiptPDFView,
+    ProductBarcodeView,  
+    ProductQRCodeView,
+    ProductLabelPDFView,
+    ProductLabelsPDFView,
 )
 
 
@@ -211,6 +215,26 @@ urlpatterns = [
         "purchases/<int:purchase_id>/receipt/",
         PurchaseReceiptPDFView.as_view(),
         name="purchase-receipt",
+    ),   
+    path(
+    "products/<int:product_id>/barcode/",
+    ProductBarcodeView.as_view(),
+    name="product-barcode",
+    ),
+    path(
+        "products/<int:product_id>/qrcode/",
+        ProductQRCodeView.as_view(),
+        name="product-qrcode",
+    ),
+    path(
+        "products/<int:product_id>/label/",
+        ProductLabelPDFView.as_view(),
+        name="product-label",
+    ),    
+    path(
+        "products/<int:product_id>/labels/",
+        ProductLabelsPDFView.as_view(),
+        name="product-labels",
     ),    
 ]
 

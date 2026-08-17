@@ -12,7 +12,15 @@ from decimal import Decimal
 from datetime import datetime
 from django.shortcuts import get_object_or_404
 from django.http import FileResponse
-from .services import PurchaseService, build_purchase_receipt_pdf
+from django.http import HttpResponse
+from .services import (
+    PurchaseService, 
+    build_purchase_receipt_pdf, 
+    build_product_barcode_png,       
+    build_product_qrcode_png,
+    build_product_label_pdf,
+    build_product_labels_pdf,
+)
 
 from .models import (
     Category,
@@ -3064,6 +3072,170 @@ class PurchaseReceiptPDFView(APIView):
             filename=(
                 f"purchase-receipt-"
                 f"{purchase.id}.pdf"
+            ),
+            content_type="application/pdf",
+        )
+
+
+class ProductBarcodeView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        product_id
+    ):
+
+        product = get_object_or_404(
+            Product,
+            id=product_id,
+        )
+
+        try:
+
+            png_buffer = (
+                build_product_barcode_png(
+                    product
+                )
+            )
+
+        except ValueError as exc:
+
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return FileResponse(
+            png_buffer,
+            as_attachment=False,
+            filename=(
+                f"barcode-{product.id}.png"
+            ),
+            content_type="image/png",
+        )
+
+
+class ProductQRCodeView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        product_id
+    ):
+
+        product = get_object_or_404(
+            Product,
+            id=product_id,
+        )
+
+        png_buffer = build_product_qrcode_png(
+            product
+        )
+
+        return HttpResponse(
+            png_buffer.getvalue(),
+            content_type="image/png",
+        )
+        
+        
+class ProductLabelPDFView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        product_id
+    ):
+
+        product = get_object_or_404(
+            Product,
+            id=product_id,
+        )
+
+        try:
+            pdf_buffer = (
+                build_product_label_pdf(
+                    product
+                )
+            )
+
+        except ValueError as exc:
+
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=False,
+            filename=(
+                f"label-{product.id}.pdf"
+            ),
+            content_type="application/pdf",
+        )
+
+        
+class ProductLabelsPDFView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request,
+        product_id
+    ):
+
+        product = get_object_or_404(
+            Product,
+            id=product_id,
+        )
+
+        count = request.query_params.get(
+            "count",
+            9,
+        )
+
+        try:
+
+            pdf_buffer = (
+                build_product_labels_pdf(
+                    product,
+                    count=count,
+                )
+            )
+
+        except ValueError as exc:
+
+            return Response(
+                {
+                    "detail": str(exc)
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=False,
+            filename=(
+                f"labels-{product.id}.pdf"
             ),
             content_type="application/pdf",
         )

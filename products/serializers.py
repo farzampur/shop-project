@@ -2,6 +2,10 @@ from rest_framework import serializers
 
 from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction
 
+from .services import (
+    generate_ean13,
+    is_valid_ean13,
+)
 
 class CategorySerializer(serializers.ModelSerializer):
 
@@ -40,7 +44,12 @@ class ProductSerializer(serializers.ModelSerializer):
         source="category.store.name",
         read_only=True
     )
-
+    barcode = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    
     class Meta:
         model = Product
 
@@ -57,7 +66,6 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
-            "purchase_price",            
         ]
 
         read_only_fields = [
@@ -67,6 +75,53 @@ class ProductSerializer(serializers.ModelSerializer):
             "category_name",
             "store_name",
         ]
+
+
+    def to_internal_value(self, data):
+
+        data = data.copy()
+
+        barcode = data.get("barcode")
+
+        if not barcode:
+            data["barcode"] = generate_ean13()
+
+        return super().to_internal_value(data)
+        
+    def validate_barcode(self, value):
+        """
+        اعتبارسنجی بارکد در صورت ارسال توسط کاربر.
+        """
+
+        if value in (
+            None,
+            ""
+        ):
+            return value
+
+        value = str(value).strip()
+
+        if not is_valid_ean13(value):
+            raise serializers.ValidationError(
+                "بارکد باید یک EAN-13 معتبر باشد."
+            )
+
+        queryset = Product.objects.filter(
+            barcode=value
+        )
+
+        if self.instance:
+            queryset = queryset.exclude(
+                pk=self.instance.pk
+            )
+
+        if queryset.exists():
+            raise serializers.ValidationError(
+                "این بارکد قبلاً برای کالای دیگری ثبت شده است."
+            )
+
+        return value
+        
 
 
 class InventorySerializer(serializers.ModelSerializer):
