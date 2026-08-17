@@ -127,7 +127,46 @@ class CartItemViewSet(viewsets.ModelViewSet):
                 "سبد خرید پیدا نشد."
             )
 
-        product = serializer.validated_data["product"]
+        #product = serializer.validated_data["product"]
+        product = (
+                serializer.validated_data.get(
+                    "product"
+                )
+            )
+        barcode = (
+            serializer.validated_data.get(
+                "barcode"
+            )
+        )            
+    # -----------------------------
+    # پیدا کردن کالا با Barcode
+    # -----------------------------
+
+        if not product and barcode:
+
+            product = (
+                Product.objects
+                .filter(
+                    barcode=str(
+                        barcode
+                    ).strip(),
+                    is_active=True,
+                )
+                .first()
+            )
+
+            if not product:
+
+                raise ValidationError(
+                    {
+                        "barcode":
+                            "کالایی با این بارکد پیدا نشد."
+                    }
+                )
+
+        # -----------------------------
+        # ادامه منطق فعلی
+        # -----------------------------
 
         quantity = serializer.validated_data["quantity"]
 
@@ -193,7 +232,8 @@ class CartItemViewSet(viewsets.ModelViewSet):
             item.discount_percent = discount_percent
 
             item.save()
-
+        serializer.instance = item
+        
     def perform_update(self, serializer):
 
         item = self.get_object()

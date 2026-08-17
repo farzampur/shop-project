@@ -36,6 +36,7 @@ from .views import (
     ProductQRCodeView,
     ProductLabelPDFView,
     ProductLabelsPDFView,
+    ProductBarcodeSearchView,
 )
 
 
@@ -235,6 +236,11 @@ urlpatterns = [
         "products/<int:product_id>/labels/",
         ProductLabelsPDFView.as_view(),
         name="product-labels",
+    ),   
+    path(
+        "products/search-by-barcode/",
+        ProductBarcodeSearchView.as_view(),
+        name="product-search-by-barcode",
     ),    
 ]
 

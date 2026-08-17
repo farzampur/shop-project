@@ -1,5 +1,5 @@
 from rest_framework.views import APIView
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -3240,4 +3240,119 @@ class ProductLabelsPDFView(APIView):
             content_type="application/pdf",
         )
 
+
+class ProductBarcodeSearchView(APIView):
+
+    permission_classes = [
+        IsAuthenticated
+    ]
+
+    def get(
+        self,
+        request
+    ):
+
+        barcode = request.query_params.get(
+            "barcode"
+        )
+
+        store_id = request.query_params.get(
+            "store"
+        )
+
+        if not barcode:
+            return Response(
+                {
+                    "detail":
+                        "بارکد ارسال نشده است."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not store_id:
+            return Response(
+                {
+                    "detail":
+                        "فروشگاه مشخص نشده است."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        barcode = str(
+            barcode
+        ).strip()
+
+        product = (
+            Product.objects
+            .select_related(
+                "category",
+                "category__store",
+            )
+            .filter(
+                barcode=barcode,
+                is_active=True,
+            )
+            .first()
+        )
+
+        if not product:
+            return Response(
+                {
+                    "detail":
+                        "کالایی با این بارکد پیدا نشد."
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        inventory = (
+            product.inventories
+            .filter(
+                store_id=store_id
+            )
+            .first()
+        )
+
+        if not inventory:
+            return Response(
+                {
+                    "detail":
+                        "این کالا در این فروشگاه موجود نیست.",
+                    "product_id":
+                        product.id,
+                    "barcode":
+                        product.barcode,
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(
+            {
+                "product": {
+                    "id": product.id,
+                    "name": product.name,
+                    "barcode": product.barcode,
+                    "unit": product.unit,
+                    "purchase_price":
+                        product.purchase_price,
+                    "sale_price":
+                        product.sale_price,
+                    "is_active":
+                        product.is_active,
+                },
+
+                "store": int(store_id),
+
+                "inventory": {
+                    "id": inventory.id,
+                    "quantity":
+                        inventory.quantity,
+                },
+
+                "can_sell":
+                    inventory.quantity > 0,
+            },
+            status=status.HTTP_200_OK,
+        )
+        
+        
         

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Cart, CartItem, Order, OrderItem
+from .models import Cart, CartItem, Order, OrderItem, Product
 from .models import Expense, Customer, CustomerTransaction
 from .models import CashBox, CashBoxTransaction, CashTransfer
 
@@ -148,13 +148,30 @@ class CartSerializer(serializers.ModelSerializer):
         
         
         
-class CartItemCreateSerializer(serializers.ModelSerializer):
+class CartItemCreateSerializer(
+    serializers.ModelSerializer
+):
+
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.filter(
+            is_active=True
+        ),
+        required=False,
+        allow_null=True,
+    )
+
+    barcode = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = CartItem
 
         fields = [
             "product",
+            "barcode",
             "quantity",
             "discount_percent",
         ]
@@ -168,6 +185,35 @@ class CartItemCreateSerializer(serializers.ModelSerializer):
                 "max_value": 100
             }
         }
+
+    def validate(self, attrs):
+
+        product = attrs.get(
+            "product"
+        )
+
+        barcode = attrs.get(
+            "barcode"
+        )
+
+        if not product and not barcode:
+            raise serializers.ValidationError(
+                {
+                    "detail":
+                        "product یا barcode را ارسال کنید."
+                }
+            )
+
+        if product and barcode:
+            raise serializers.ValidationError(
+                {
+                    "detail":
+                        "product و barcode را همزمان ارسال نکنید."
+                }
+            )
+
+        return attrs
+        
 
 
 class CartItemUpdateSerializer(serializers.ModelSerializer):
