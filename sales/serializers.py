@@ -4,6 +4,7 @@ from .models import Cart, CartItem, Order, OrderItem, Product
 from .models import Expense, Customer, CustomerTransaction
 from .models import CashBox, CashBoxTransaction, CashTransfer
 
+from core.fields import JalaliDateTimeField
 
 class CartItemSerializer(serializers.ModelSerializer):
 
@@ -41,7 +42,14 @@ class CartItemSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True
     )
-
+    
+    created_at = JalaliDateTimeField(
+        with_time=True
+    ) 
+    updated_at = JalaliDateTimeField(
+        with_time=True
+    )    
+    
     class Meta:
         model = CartItem
 
@@ -97,9 +105,18 @@ class CartSerializer(serializers.ModelSerializer):
 
     total_price = serializers.SerializerMethodField()
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    updated_at = JalaliDateTimeField(
+        with_time=True
+    )    
+        
     class Meta:
         model = Cart
+        
 
+        
         fields = [
             "id",
             "user",
@@ -260,6 +277,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    
     items = OrderItemSerializer(
         many=True,
         read_only=True
@@ -316,7 +337,11 @@ class ExpenseSerializer(
         source="store.name",
         read_only=True
     )
-
+    
+    created_at = JalaliDateTimeField(
+            with_time=True
+    )
+    
     class Meta:
         model = Expense
 
@@ -359,6 +384,10 @@ class CustomerTransactionSerializer(
     serializers.ModelSerializer
 ):
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    
     class Meta:
 
         model = CustomerTransaction
@@ -383,6 +412,10 @@ class CashBoxSerializer(
     serializers.ModelSerializer
 ):
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    
     class Meta:
 
         model = CashBox
@@ -407,6 +440,10 @@ class CashBoxTransactionSerializer(
     serializers.ModelSerializer
 ):
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    
     class Meta:
 
         model = CashBoxTransaction
@@ -430,6 +467,10 @@ class CashTransferSerializer(
     serializers.ModelSerializer
 ):
 
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+    
     class Meta:
 
         model = CashTransfer

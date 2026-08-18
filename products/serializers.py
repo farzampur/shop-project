@@ -1,5 +1,8 @@
 from rest_framework import serializers
 
+from core.fields import (
+    JalaliDateTimeField,
+)
 from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction
 
 from .services import (
@@ -13,7 +16,9 @@ class CategorySerializer(serializers.ModelSerializer):
         source="store.name",
         read_only=True
     )
-
+    created_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
         model = Category
 
@@ -48,6 +53,14 @@ class ProductSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True,
         allow_null=True,
+    )
+
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
+
+    updated_at = JalaliDateTimeField(
+        with_time=True
     )
     
     class Meta:
@@ -140,7 +153,10 @@ class InventorySerializer(serializers.ModelSerializer):
         source="store.name",
         read_only=True
     )
-
+    
+    updated_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
         model = Inventory
 
@@ -168,6 +184,10 @@ class InventorySerializer(serializers.ModelSerializer):
 class InventoryTransactionSerializer(
     serializers.ModelSerializer
 ):
+
+    created_at = JalaliDateTimeField(
+        with_time=True
+    )
 
     class Meta:
         model = InventoryTransaction
@@ -278,7 +298,9 @@ class PurchaseSerializer(
     def get_item_count(self, obj):
         return obj.items.count()
 
-
+    created_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
         model = Purchase
 
@@ -311,7 +333,9 @@ class SupplierTransactionSerializer(
     """
     Serializer تراکنش مالی تأمین‌کننده.
     """
-
+    created_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
 
         model = SupplierTransaction
@@ -338,7 +362,9 @@ class SupplierPaymentSerializer(
     """
     Serializer ثبت پرداخت به تأمین‌کننده.
     """
-
+    created_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
         model = SupplierTransaction
 
@@ -390,7 +416,10 @@ class PurchaseReturnSerializer(
         source="purchase.store.name",
         read_only=True
     )
-
+    
+    created_at = JalaliDateTimeField(
+    with_time=True
+)
     class Meta:
         model = PurchaseReturn
 
