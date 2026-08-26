@@ -39,14 +39,16 @@ from .models import (
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
+from pathlib import Path
+
 FONT_NAME = "InvoiceArial"
+FONT_PATH = Path(__file__).resolve().parent.parent / "fonts" / "arial.ttf"
 
 if FONT_NAME not in pdfmetrics.getRegisteredFontNames():
     pdfmetrics.registerFont(
         TTFont(
             FONT_NAME,
-            FONT_PATH,
+            str(FONT_PATH),
         )
     )
 

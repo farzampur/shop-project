@@ -218,9 +218,9 @@ urlpatterns = [
         name="purchase-receipt",
     ),   
     path(
-    "products/<int:product_id>/barcode/",
-    ProductBarcodeView.as_view(),
-    name="product-barcode",
+        "products/<int:product_id>/barcode/",
+        ProductBarcodeView.as_view(),
+        name="product-barcode",
     ),
     path(
         "products/<int:product_id>/qrcode/",

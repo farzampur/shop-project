@@ -41,3 +41,10 @@ media/
 staticfiles/
 
 *.txt
+data.json
+db_sqlite_backup_*.sqlite3
+shop_db_backup.dump
+
+installer/
+release/
+query

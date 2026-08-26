@@ -289,15 +289,18 @@ class OrderService:
 
 
 ## چاپ فاکتور ##
-FONT_PATH = r"C:\Windows\Fonts\arial.ttf"
-FONT_NAME = "InvoiceArial"
+from pathlib import Path
 
-pdfmetrics.registerFont(
-    TTFont(
-        FONT_NAME,
-        FONT_PATH
+FONT_NAME = "InvoiceArial"
+FONT_PATH = Path(__file__).resolve().parent.parent / "fonts" / "arial.ttf"
+
+if FONT_NAME not in pdfmetrics.getRegisteredFontNames():
+    pdfmetrics.registerFont(
+        TTFont(
+            FONT_NAME,
+            str(FONT_PATH),
+        )
     )
-)
 
 
 def fa(text):

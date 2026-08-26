@@ -130,7 +130,17 @@ class ProductViewSet(viewsets.ModelViewSet):
                 "شما به این فروشگاه دسترسی ندارید."
             )
 
-        instance.delete()
+        from django.db.models.deletion import ProtectedError
+        from rest_framework.exceptions import ValidationError
+
+        try:
+            instance.delete()
+
+        except ProtectedError:
+            raise ValidationError(
+                "این محصول دارای سابقه خرید، فروش یا برگشت است و قابل حذف نیست. "
+                "در صورت نیاز، محصول را غیرفعال کنید."
+            )
 
 
 
