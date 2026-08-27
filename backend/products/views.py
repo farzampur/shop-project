@@ -66,9 +66,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-        return Category.objects.filter(
+
+        queryset = Category.objects.filter(
             store__store_users__user=self.request.user
         ).distinct()
+
+        store_id = self.request.query_params.get("store")
+
+        if store_id:
+            queryset = queryset.filter(
+                store_id=store_id
+            )
+
+        return queryset
 
     def perform_create(self, serializer):
         store = serializer.validated_data["store"]
@@ -126,16 +136,46 @@ class ProductViewSet(viewsets.ModelViewSet):
         StoreRolePermission,
     ]
 
+
     def get_queryset(self):
-        return Product.objects.filter(
+
+        queryset = Product.objects.filter(
             category__store__store_users__user=self.request.user
         ).distinct()
 
+        store_id = self.request.query_params.get("store")
+
+        if store_id:
+            queryset = queryset.filter(
+                category__store_id=store_id
+            )
+
+        return queryset
+
+
+
     def perform_create(self, serializer):
+
         category = serializer.validated_data["category"]
 
-        has_access = category.store.store_users.filter(
-            user=self.request.user
+        store_id = self.request.query_params.get("store")
+
+        if not store_id:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "فروشگاه انتخاب نشده است."
+            )
+
+        if str(category.store_id) != str(store_id):
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "دسته‌بندی انتخاب‌شده متعلق به فروشگاه فعال نیست."
+            )
+
+        has_access = self.request.user.user_stores.filter(
+            store_id=store_id
         ).exists()
 
         if not has_access:
@@ -146,13 +186,36 @@ class ProductViewSet(viewsets.ModelViewSet):
             )
 
         serializer.save()
+
+
 
     def perform_update(self, serializer):
 
         product = self.get_object()
 
-        has_access = product.category.store.store_users.filter(
-            user=self.request.user
+        store_id = self.request.query_params.get("store")
+
+        if not store_id:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "فروشگاه انتخاب نشده است."
+            )
+
+        category = serializer.validated_data.get(
+            "category",
+            product.category
+        )
+
+        if str(category.store_id) != str(store_id):
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "دسته‌بندی انتخاب‌شده متعلق به فروشگاه فعال نیست."
+            )
+
+        has_access = self.request.user.user_stores.filter(
+            store_id=store_id
         ).exists()
 
         if not has_access:
@@ -163,6 +226,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             )
 
         serializer.save()
+
 
     def perform_destroy(self, instance):
 

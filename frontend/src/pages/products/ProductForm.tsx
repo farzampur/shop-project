@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useStore } from "../../contexts/StoreContext";
+
 import {
   Alert,
   Button,
@@ -44,6 +46,7 @@ function ProductForm({
   onSuccess,
   onCancel,
 }: ProductFormProps) {
+  const { activeStore } = useStore();	
   const isEditMode = Boolean(product);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -68,32 +71,47 @@ function ProductForm({
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    api
-      .get("/products/categories/")
-      .then((response) => {
-        const data = Array.isArray(response.data)
-          ? response.data
-          : response.data.results;
 
-        setCategories(data || []);
-      })
-      .catch((error) => {
-        console.error(
-          "CATEGORIES ERROR:",
-          error.response?.status
-        );
-        console.error(
-          "CATEGORIES DATA:",
-          error.response?.data
-        );
+	useEffect(() => {
+	  if (!activeStore) {
+		setCategories([]);
+		setCategoriesLoading(false);
+		return;
+	  }
 
-        setError("خطا در دریافت دسته‌بندی‌ها");
-      })
-      .finally(() => {
-        setCategoriesLoading(false);
-      });
-  }, []);
+	  setCategoriesLoading(true);
+
+	  api
+		.get("/products/categories/", {
+		  params: {
+			store: activeStore.id,
+		  },
+		})
+		.then((response) => {
+		  const data = Array.isArray(response.data)
+			? response.data
+			: response.data.results;
+
+		  setCategories(data || []);
+		})
+		.catch((error) => {
+		  console.error(
+			"CATEGORIES ERROR:",
+			error.response?.status
+		  );
+
+		  console.error(
+			"CATEGORIES DATA:",
+			error.response?.data
+		  );
+
+		  setError("خطا در دریافت دسته‌بندی‌ها");
+		})
+		.finally(() => {
+		  setCategoriesLoading(false);
+		});
+	}, [activeStore]);
+	
 
   const handleSubmit = async (
     event: React.FormEvent
@@ -111,7 +129,10 @@ function ProductForm({
       setError("دسته‌بندی را انتخاب کنید.");
       return;
     }
-
+    if (!activeStore) {
+      setError("فروشگاه فعالی انتخاب نشده است.");
+      return;
+    }
     setLoading(true);
 
     try {
@@ -136,17 +157,27 @@ function ProductForm({
         data.barcode = barcode.trim();
       }
 
-      if (isEditMode && product) {
-        await api.patch(
-          `/products/products/${product.id}/`,
-          data
-        );
-      } else {
-        await api.post(
-          "/products/products/",
-          data
-        );
-      }
+	  if (isEditMode && product) {
+	    await api.patch(
+	  	`/products/products/${product.id}/`,
+	  	  data,
+		  {
+		    params: {
+			  store: activeStore.id,
+		    },
+		  }
+	    );
+	  } else {
+	   await api.post(
+		  "/products/products/",
+		  data,
+		  {
+		    params: {
+			  store: activeStore.id,
+		    },
+		  }
+	    );
+	  }
 
       onSuccess();
     } catch (error: any) {

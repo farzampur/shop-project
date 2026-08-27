@@ -19,6 +19,7 @@ import {
 
 import api from "../../services/api";
 import ProductForm from "./ProductForm";
+import { useStore } from "../../contexts/StoreContext";
 
 interface Product {
   id: number;
@@ -32,6 +33,7 @@ interface Product {
 }
 
 function Products() {
+  const { activeStore } = useStore();	
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,12 +41,20 @@ function Products() {
   const [editingProduct, setEditingProduct] =
     useState<Product | null>(null);
   
-  const loadProducts = () => {
-    setLoading(true);
-    setError("");
+	const loadProducts = () => {
+	  if (!activeStore) {
+		setProducts([]);
+		return;
+	  }
 
-    api
-      .get("/products/products/")
+	  setLoading(true);
+	  setError("");
+
+  	  api.get("/products/products/", {
+	    params: {
+		  store: activeStore?.id,
+	    },
+	  })
       .then((response) => {
         console.log("PRODUCTS:", response.data);
 
@@ -73,7 +83,7 @@ function Products() {
 
   useEffect(() => {
     loadProducts();
-  }, []);
+  }, [activeStore]);
 
 	const handleDelete = async (product: Product) => {
 	  const confirmed = window.confirm(
@@ -185,6 +195,10 @@ function Products() {
           >
             <TableHead>
               <TableRow>
+				<TableCell align="right">
+				  ردیف
+				</TableCell>
+				
                 <TableCell align="right">
                   نام محصول
                 </TableCell>
@@ -215,8 +229,12 @@ function Products() {
             </TableHead>
 
             <TableBody>
-              {products.map((product) => (
+              {products.map((product, index) => (
                 <TableRow key={product.id}>
+				  <TableCell align="right">
+				    {index + 1}
+				  </TableCell>		
+				  
                   <TableCell align="right">
                     {product.name}
                   </TableCell>
