@@ -13,6 +13,7 @@ from datetime import datetime
 from django.shortcuts import get_object_or_404
 from django.http import FileResponse
 from django.http import HttpResponse
+from django.db.models import ProtectedError
 from .services import (
     PurchaseService, 
     build_purchase_receipt_pdf, 
@@ -69,6 +70,52 @@ class CategoryViewSet(viewsets.ModelViewSet):
             store__store_users__user=self.request.user
         ).distinct()
 
+    def perform_create(self, serializer):
+        store = serializer.validated_data["store"]
+
+        has_access = self.request.user.user_stores.filter(
+            store=store
+        ).exists()
+
+        if not has_access:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        serializer.save()
+
+    def perform_update(self, serializer):
+        category = self.get_object()
+        store = serializer.validated_data.get(
+            "store",
+            category.store
+        )
+
+        has_access = self.request.user.user_stores.filter(
+            store=store
+        ).exists()
+
+        if not has_access:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+
+        except ProtectedError:
+            from rest_framework.exceptions import ValidationError
+
+            raise ValidationError(
+                "این دسته‌بندی دارای محصول است و قابل حذف نیست."
+            )
 
 class ProductViewSet(viewsets.ModelViewSet):
 

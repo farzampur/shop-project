@@ -8,7 +8,12 @@ import {
   ListItemText,
   Toolbar,
   Typography,
+  FormControl,
+  Select,
+  MenuItem,
 } from "@mui/material";
+
+import type { SelectChangeEvent } from "@mui/material";
 
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import InventoryIcon from "@mui/icons-material/Inventory";
@@ -18,12 +23,42 @@ import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 
-import { Outlet, useNavigate } from "react-router-dom";
+import {
+  Outlet,
+  useNavigate,
+} from "react-router-dom";
+
+import { useStore } from "../contexts/StoreContext";
 
 const drawerWidth = 240;
 
 function DashboardLayout() {
   const navigate = useNavigate();
+
+  const {
+    stores,
+    activeStore,
+    setActiveStore,
+    loading: storeLoading,
+  } = useStore();
+
+  const handleStoreChange = (
+    event: SelectChangeEvent<number>
+  ) => {
+    const storeId = Number(
+      event.target.value
+    );
+
+    const selectedStore = stores.find(
+      (store) => store.id === storeId
+    );
+
+    if (!selectedStore) {
+      return;
+    }
+
+    setActiveStore(selectedStore);
+  };
 
   const menuItems = [
     {
@@ -75,19 +110,49 @@ function DashboardLayout() {
       <AppBar
         position="fixed"
         sx={{
-          zIndex: (theme) => theme.zIndex.drawer + 1,
+          zIndex: (theme) =>
+            theme.zIndex.drawer + 1,
         }}
       >
         <Toolbar>
           <Typography
             variant="h6"
             sx={{
-              flexGrow: 1,
-              textAlign: "right",
+              mr: 2,
             }}
           >
-            فروشگاه من
+            فروشگاه:
           </Typography>
+
+          <FormControl
+            size="small"
+            sx={{
+              minWidth: 220,
+              backgroundColor: "white",
+              borderRadius: 1,
+            }}
+          >
+            <Select
+              value={activeStore?.id ?? ""}
+              onChange={handleStoreChange}
+              displayEmpty
+              disabled={
+                storeLoading ||
+                stores.length === 0
+              }
+            >
+              {stores.map((store) => (
+                <MenuItem
+                  key={store.id}
+                  value={store.id}
+                >
+                  {store.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <Box sx={{ flexGrow: 1 }} />
 
           <Typography variant="body2">
             مدیریت فروشگاه
@@ -114,7 +179,9 @@ function DashboardLayout() {
           {menuItems.map((item) => (
             <ListItemButton
               key={item.path}
-              onClick={() => navigate(item.path)}
+              onClick={() =>
+                navigate(item.path)
+              }
             >
               <ListItemIcon>
                 {item.icon}
@@ -147,3 +214,4 @@ function DashboardLayout() {
 }
 
 export default DashboardLayout;
+

@@ -5,9 +5,12 @@ import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import DashboardLayout from "./layouts/DashboardLayout";
 import Products from "./pages/products/Products";
+import Categories from "./pages/categories/Categories";
+import { StoreProvider } from "./contexts/StoreContext";
 
 function App() {
   return (
+   <StoreProvider>
     <BrowserRouter>
       <Routes>
         {/* Login */}
@@ -28,7 +31,10 @@ function App() {
             path="/products"
             element={<Products />}
           />
-
+		  <Route
+		    path="/categories"
+		    element={<Categories />}
+		  />
           <Route
             path="/purchases"
             element={<h2>خریدها</h2>}
@@ -68,6 +74,8 @@ function App() {
         />
       </Routes>
     </BrowserRouter>
+   </StoreProvider>
+	
   );
 }
 
