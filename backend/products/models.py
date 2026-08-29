@@ -212,7 +212,18 @@ class InventoryTransaction(models.Model):
     )
 
 
+from django.db import models
+from core.models import Store
+
+
 class Supplier(models.Model):
+
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE,
+        related_name="suppliers",
+        verbose_name="فروشگاه",        
+    )
 
     name = models.CharField(
         max_length=255
@@ -238,10 +249,15 @@ class Supplier(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True
     )
-
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "name"],
+                name="unique_supplier_name_per_store",
+            )
+        ]
     def __str__(self):
         return self.name
-
 
 class Purchase(models.Model):
 

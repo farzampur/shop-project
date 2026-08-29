@@ -7,6 +7,7 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import Products from "./pages/products/Products";
 import Categories from "./pages/categories/Categories";
 import { StoreProvider } from "./contexts/StoreContext";
+import Purchases from "./pages/purchases/Purchases";
 
 function App() {
   return (
@@ -26,8 +27,8 @@ function App() {
         >
           <Route path="/dashboard" element={<Dashboard />} />
 
-          {/* فعلاً صفحات آزمایشی */}
-          <Route
+          {/* فعلاً صفحات آزمایشی */}         
+		  <Route
             path="/products"
             element={<Products />}
           />
@@ -35,10 +36,10 @@ function App() {
 		    path="/categories"
 		    element={<Categories />}
 		  />
-          <Route
-            path="/purchases"
-            element={<h2>خریدها</h2>}
-          />
+		  <Route
+		    path="/purchases"
+		    element={<Purchases />}
+		  />
 
           <Route
             path="/sales"

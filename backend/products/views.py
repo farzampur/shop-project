@@ -387,13 +387,132 @@ class SupplierViewSet(
     viewsets.ModelViewSet
 ):
 
-    serializer_class = SupplierSerializer
+    serializer_class = (
+        SupplierSerializer
+    )
 
     permission_classes = [
-        IsAuthenticated
+        IsAuthenticated,
     ]
 
-    queryset = Supplier.objects.all()
+    def get_queryset(self):
+
+        queryset = (
+            Supplier.objects
+            .filter(
+                store__store_users__user=
+                self.request.user
+            )
+            .distinct()
+        )
+
+        store_id = (
+            self.request.query_params.get(
+                "store"
+            )
+        )
+
+        if store_id:
+            queryset = queryset.filter(
+                store_id=store_id
+            )
+
+        return queryset
+
+    def perform_create(
+        self,
+        serializer
+    ):
+
+        store = serializer.validated_data.get(
+            "store"
+        )
+
+        if not store:
+            from rest_framework.exceptions import (
+                ValidationError
+            )
+
+            raise ValidationError(
+                "فروشگاه الزامی است."
+            )
+
+        has_access = (
+            store.store_users
+            .filter(
+                user=self.request.user
+            )
+            .exists()
+        )
+
+        if not has_access:
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        serializer.save()
+
+    def perform_update(
+        self,
+        serializer
+    ):
+
+        supplier = self.get_object()
+
+        store = (
+            serializer.validated_data.get(
+                "store",
+                supplier.store
+            )
+        )
+
+        has_access = (
+            store.store_users
+            .filter(
+                user=self.request.user
+            )
+            .exists()
+        )
+
+        if not has_access:
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        serializer.save()
+
+    def perform_destroy(
+        self,
+        instance
+    ):
+
+        has_access = (
+            instance.store
+            .store_users
+            .filter(
+                user=self.request.user
+            )
+            .exists()
+        )
+
+        if not has_access:
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        instance.delete()
 
 
 class PurchaseViewSet(
@@ -401,19 +520,9 @@ class PurchaseViewSet(
 ):
     """
     مدیریت خرید از تأمین‌کنندگان.
-
-    وظایف:
-    - ایجاد خرید
-    - مشاهده خریدها
-    - ویرایش خرید
-    - حذف خرید
-    - ثبت خودکار بدهی تأمین‌کننده
-      هنگام دریافت خرید
     """
 
-    serializer_class = (
-        PurchaseSerializer
-    )
+    serializer_class = PurchaseSerializer
 
     permission_classes = [
         IsAuthenticated
@@ -435,18 +544,62 @@ class PurchaseViewSet(
         )
     )
 
+    def get_queryset(self):
+
+        queryset = (
+            Purchase.objects
+            .select_related(
+                "supplier",
+                "store",
+                "user",
+            )
+            .prefetch_related(
+                "items__product"
+            )
+            .filter(
+                store__store_users__user=self.request.user
+            )
+            .distinct()
+            .order_by(
+                "-created_at",
+                "-id",
+            )
+        )
+
+        store_id = self.request.query_params.get(
+            "store"
+        )
+
+        if store_id:
+            queryset = queryset.filter(
+                store_id=store_id
+            )
+
+        return queryset
+
     @transaction.atomic
     def perform_create(
         self,
         serializer
     ):
-        """
-        ایجاد خرید جدید.
 
-        اگر خرید از ابتدا با
-        received=True ثبت شود،
-        بدهی تأمین‌کننده نیز ایجاد می‌شود.
-        """
+        store = serializer.validated_data["store"]
+
+        has_access = (
+            self.request.user.user_stores
+            .filter(store=store)
+            .exists()
+        )
+
+        if not has_access:
+
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
 
         purchase = serializer.save(
             user=self.request.user
@@ -456,7 +609,6 @@ class PurchaseViewSet(
             purchase.received
             and purchase.total_amount > 0
         ):
-
             self._create_supplier_debt(
                 purchase
             )
@@ -466,19 +618,33 @@ class PurchaseViewSet(
         self,
         serializer
     ):
-        """
-        ویرایش خرید.
-
-        اگر خرید قبلاً دریافت نشده بوده
-        و اکنون received=True شود،
-        بدهی تأمین‌کننده ثبت می‌شود.
-        """
 
         purchase = self.get_object()
 
         old_received = (
             purchase.received
         )
+
+        store = serializer.validated_data.get(
+            "store",
+            purchase.store
+        )
+
+        has_access = (
+            self.request.user.user_stores
+            .filter(store=store)
+            .exists()
+        )
+
+        if not has_access:
+
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
 
         purchase = serializer.save()
 
@@ -495,13 +661,6 @@ class PurchaseViewSet(
         self,
         purchase
     ):
-        """
-        ثبت بدهی خرید برای تأمین‌کننده.
-
-        برای جلوگیری از ثبت دوباره،
-        وجود تراکنش قبلی با همین خرید
-        بررسی می‌شود.
-        """
 
         exists = (
             SupplierTransaction.objects
@@ -525,8 +684,7 @@ class PurchaseViewSet(
                 f"بدهی بابت خرید "
                 f"شماره {purchase.id}"
             ),
-        )     
-        
+        )
         
 class PurchaseItemViewSet(
     viewsets.ModelViewSet
@@ -544,11 +702,18 @@ class PurchaseItemViewSet(
             "purchase_pk"
         )
 
-        return PurchaseItem.objects.filter(
-            purchase_id=purchase_id
-        ).select_related(
-            "purchase",
-            "product"
+        return (
+            PurchaseItem.objects
+            .filter(
+                purchase_id=purchase_id,
+                purchase__store__store_users__user=
+                self.request.user
+            )
+            .select_related(
+                "purchase",
+                "product"
+            )
+            .distinct()
         )
 
     def perform_create(self, serializer):
@@ -557,14 +722,67 @@ class PurchaseItemViewSet(
             "purchase_pk"
         )
 
-        purchase = Purchase.objects.get(
-            id=purchase_id
+        try:
+            purchase = (
+                Purchase.objects
+                .select_related("store")
+                .get(
+                    id=purchase_id
+                )
+            )
+        except Purchase.DoesNotExist:
+
+            from rest_framework.exceptions import (
+                NotFound
+            )
+
+            raise NotFound(
+                "خرید موردنظر پیدا نشد."
+            )
+
+        # بررسی دسترسی کاربر به فروشگاه خرید
+        has_access = (
+            purchase.store
+            .store_users
+            .filter(
+                user=self.request.user
+            )
+            .exists()
         )
+
+        if not has_access:
+
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        product = serializer.validated_data[
+            "product"
+        ]
+
+        # بررسی تعلق محصول به همان فروشگاه
+        if product.category.store_id != purchase.store_id:
+
+            from rest_framework.exceptions import (
+                ValidationError
+            )
+
+            raise ValidationError(
+                {
+                    "product": (
+                        "محصول انتخاب‌شده متعلق "
+                        "به فروشگاه این خرید نیست."
+                    )
+                }
+            )
 
         serializer.save(
             purchase=purchase
         )
-        
         
         
 class LowStockReportView(

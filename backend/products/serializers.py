@@ -232,10 +232,31 @@ class SupplierSerializer(
     serializers.ModelSerializer
 ):
 
+    store_name = serializers.CharField(
+        source="store.name",
+        read_only=True
+    )
+
     class Meta:
         model = Supplier
 
-        fields = "__all__"        
+        fields = [
+            "id",
+            "store",
+            "store_name",
+            "name",
+            "phone",
+            "address",
+            "description",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+        ]     
         
 
 class PurchaseItemSerializer(
@@ -325,7 +346,33 @@ class PurchaseSerializer(
             "total_amount",
             "created_at",
         ]
-        
+    def validate(self, attrs):
+
+        store = attrs.get(
+            "store",
+            getattr(self.instance, "store", None)
+        )
+
+        supplier = attrs.get(
+            "supplier",
+            getattr(self.instance, "supplier", None)
+        )
+
+        if (
+            store
+            and supplier
+            and supplier.store_id != store.id
+        ):
+            raise serializers.ValidationError(
+                {
+                    "supplier": (
+                        "تأمین‌کننده انتخاب‌شده "
+                        "متعلق به فروشگاه انتخاب‌شده نیست."
+                    )
+                }
+            )
+
+        return attrs        
         
 class SupplierTransactionSerializer(
     serializers.ModelSerializer
