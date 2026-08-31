@@ -336,35 +336,22 @@ function PurchaseForm({
 
     try {
 
-      // ایجاد خرید اصلی
-      const purchaseResponse =
-        await api.post(
-          "/products/purchases/",
-          {
-            supplier,
-            store: activeStore.id,
-            invoice_number:
-              invoiceNumber.trim(),
-            received,
-          }
-        );
+			  // ایجاد خرید اصلی
+		await api.post(
+		  "/products/purchases/",
+		  {
+			supplier,
+			store: activeStore.id,
+			invoice_number: invoiceNumber.trim(),
+			received,
 
-      const purchaseId =
-        purchaseResponse.data.id;
-
-
-      // ایجاد تمام اقلام خرید
-      for (const item of items) {
-
-        await api.post(
-          `/products/purchases/${purchaseId}/items/`,
-          {
-            product: item.product,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-          }
-        );
-      }
+			items: items.map((item) => ({
+			  product: item.product,
+			  quantity: item.quantity,
+			  unit_price: item.unit_price,
+			})),
+		  }
+		);
 
       onSuccess();
 

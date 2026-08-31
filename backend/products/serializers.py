@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import transaction
 
 from core.fields import (
     JalaliDateTimeField,
@@ -269,6 +270,7 @@ class PurchaseItemSerializer(
     )
 
     class Meta:
+
         model = PurchaseItem
 
         fields = [
@@ -281,9 +283,9 @@ class PurchaseItemSerializer(
         ]
 
         read_only_fields = [
-            "total_price"
+            "id",
+            "total_price",
         ]
-
 
 
 class PurchaseSerializer(
@@ -301,8 +303,7 @@ class PurchaseSerializer(
     )
 
     items = PurchaseItemSerializer(
-        many=True,
-        read_only=True
+        many=True
     )
 
     received = serializers.BooleanField(
@@ -316,13 +317,12 @@ class PurchaseSerializer(
 
     item_count = serializers.SerializerMethodField()
 
-    def get_item_count(self, obj):
-        return obj.items.count()
-
     created_at = JalaliDateTimeField(
-    with_time=True
-)
+        with_time=True
+    )
+
     class Meta:
+
         model = Purchase
 
         fields = [
@@ -342,22 +342,44 @@ class PurchaseSerializer(
         ]
 
         read_only_fields = [
+            "id",
             "user",
             "total_amount",
             "created_at",
         ]
-    def validate(self, attrs):
+
+    def get_item_count(
+        self,
+        obj
+    ):
+        return obj.items.count()
+
+    def validate(
+        self,
+        attrs
+    ):
 
         store = attrs.get(
             "store",
-            getattr(self.instance, "store", None)
+            getattr(
+                self.instance,
+                "store",
+                None
+            )
         )
 
         supplier = attrs.get(
             "supplier",
-            getattr(self.instance, "supplier", None)
+            getattr(
+                self.instance,
+                "supplier",
+                None
+            )
         )
 
+        items = attrs.get("items")
+
+        # تأمین‌کننده متعلق به فروشگاه باشد
         if (
             store
             and supplier
@@ -372,7 +394,95 @@ class PurchaseSerializer(
                 }
             )
 
+        # در ایجاد خرید، حداقل یک قلم لازم است
+        if (
+            not self.instance
+            and not items
+        ):
+            raise serializers.ValidationError(
+                {
+                    "items": (
+                        "حداقل یک قلم خرید "
+                        "باید ثبت شود."
+                    )
+                }
+            )
+
+        # تمام محصولات متعلق به فروشگاه باشند
+        if store and items:
+
+            for item in items:
+
+                product = item["product"]
+
+                product_store_id = (
+                    product.category.store_id
+                )
+
+                if (
+                    product_store_id
+                    != store.id
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "items": (
+                                f"محصول «{product.name}» "
+                                "متعلق به فروشگاه "
+                                "انتخاب‌شده نیست."
+                            )
+                        }
+                    )
+
         return attrs        
+
+    @transaction.atomic
+    def create(
+        self,
+        validated_data
+    ):
+
+        items_data = (
+            validated_data.pop(
+                "items",
+                []
+            )
+        )
+
+        purchase = Purchase.objects.create(
+            **validated_data
+        )
+
+        total_amount = 0
+
+        for item_data in items_data:
+
+            quantity = item_data["quantity"]
+            unit_price = item_data["unit_price"]
+
+            total_price = (
+                quantity
+                * unit_price
+            )
+
+            PurchaseItem.objects.create(
+                purchase=purchase,
+                product=item_data["product"],
+                quantity=quantity,
+                unit_price=unit_price,
+                total_price=total_price,
+            )
+
+            total_amount += total_price
+
+        purchase.total_amount = total_amount
+
+        purchase.save(
+            update_fields=[
+                "total_amount"
+            ]
+        )
+
+        return purchase
         
 class SupplierTransactionSerializer(
     serializers.ModelSerializer

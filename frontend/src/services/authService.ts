@@ -52,4 +52,7 @@ export function saveTokens(tokens: LoginResponse) {
 
 export function logout() {
   tokenService.clearTokens();
+  window.dispatchEvent(
+    new Event("auth-change")
+  );
 }

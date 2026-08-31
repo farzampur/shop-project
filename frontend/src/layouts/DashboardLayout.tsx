@@ -12,9 +12,8 @@ import {
   Select,
   MenuItem,
 } from "@mui/material";
-
+import { logout } from "../services/authService";
 import type { SelectChangeEvent } from "@mui/material";
-
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import InventoryIcon from "@mui/icons-material/Inventory";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
@@ -22,18 +21,21 @@ import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import AssessmentIcon from "@mui/icons-material/Assessment";
+import CategoryIcon from "@mui/icons-material/Category";
+import { useStore } from "../contexts/StoreContext";
+import LogoutIcon from "@mui/icons-material/Logout";
 
 import {
   Outlet,
   useNavigate,
 } from "react-router-dom";
 
-import { useStore } from "../contexts/StoreContext";
 
 const drawerWidth = 240;
 
 function DashboardLayout() {
   const navigate = useNavigate();
+
 
   const {
     stores,
@@ -41,6 +43,11 @@ function DashboardLayout() {
     setActiveStore,
     loading: storeLoading,
   } = useStore();
+
+	const handleLogout = () => {
+	  logout();
+	  navigate("/login", { replace: true });
+	};
 
   const handleStoreChange = (
     event: SelectChangeEvent<number>
@@ -65,6 +72,11 @@ function DashboardLayout() {
       title: "داشبورد",
       path: "/dashboard",
       icon: <DashboardIcon />,
+    },
+	{
+      title: "دسته‌بندی‌ها",
+      path: "/categories",
+      icon: <CategoryIcon />,
     },
     {
       title: "محصولات",
@@ -195,6 +207,18 @@ function DashboardLayout() {
               />
             </ListItemButton>
           ))}
+		  <ListItemButton onClick={handleLogout}>
+			<ListItemIcon>
+			  <LogoutIcon />
+			</ListItemIcon>
+
+			<ListItemText
+			  primary="خروج"
+			  sx={{
+				textAlign: "right",
+			  }}
+			/>
+		  </ListItemButton>		  
         </List>
       </Drawer>
 

@@ -38,59 +38,100 @@ export function StoreProvider({
     useState<Store | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api
-      .get("/stores/")
-      .then((response) => {
-        const data = Array.isArray(response.data)
-          ? response.data
-          : response.data.results;
+	  useEffect(() => {
+	  const loadStores = async () => {
+		const accessToken =
+		  localStorage.getItem("access_token");
 
-        const availableStores: Store[] = data || [];
+		if (!accessToken) {
+		  setStores([]);
+		  setActiveStoreState(null);
+		  setLoading(false);
+		  return;
+		}
 
-        setStores(availableStores);
+		setLoading(true);
 
-        if (availableStores.length === 0) {
-          return;
-        }
+		try {
+		  const response = await api.get("/stores/");
 
-        const savedStoreId =
-          localStorage.getItem("active_store_id");
+		  const data = Array.isArray(response.data)
+			? response.data
+			: response.data.results;
 
-        const savedStore = availableStores.find(
-          (store) =>
-            store.id === Number(savedStoreId)
-        );
+		  const availableStores: Store[] =
+			data || [];
 
-        if (savedStore) {
-          setActiveStoreState(savedStore);
-        } else {
-          setActiveStoreState(
-            availableStores[0]
-          );
+		  setStores(availableStores);
 
-          localStorage.setItem(
-            "active_store_id",
-            String(availableStores[0].id)
-          );
-        }
-      })
-      .catch((error) => {
-        console.error(
-          "STORES ERROR:",
-          error.response?.status
-        );
+		  if (availableStores.length === 0) {
+			setActiveStoreState(null);
+			return;
+		  }
 
-        console.error(
-          "STORES DATA:",
-          error.response?.data
-        );
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, []);
+		  const savedStoreId =
+			localStorage.getItem(
+			  "active_store_id"
+			);
 
+		  const savedStore =
+			availableStores.find(
+			  (store) =>
+				store.id === Number(savedStoreId)
+			);
+
+		  if (savedStore) {
+			setActiveStoreState(savedStore);
+		  } else {
+			setActiveStoreState(
+			  availableStores[0]
+			);
+
+			localStorage.setItem(
+			  "active_store_id",
+			  String(availableStores[0].id)
+			);
+		  }
+
+		} catch (error: any) {
+
+		  console.error(
+			"STORES ERROR:",
+			error.response?.status
+		  );
+
+		  console.error(
+			"STORES DATA:",
+			error.response?.data
+		  );
+
+		  setStores([]);
+		  setActiveStoreState(null);
+
+		} finally {
+		  setLoading(false);
+		}
+	  };
+
+	  loadStores();
+
+	  const handleAuthChange = () => {
+		loadStores();
+	  };
+
+	  window.addEventListener(
+		"auth-change",
+		handleAuthChange
+	  );
+
+	  return () => {
+		window.removeEventListener(
+		  "auth-change",
+		  handleAuthChange
+		);
+	  };
+
+	}, []);
   const setActiveStore = (store: Store) => {
     setActiveStoreState(store);
 

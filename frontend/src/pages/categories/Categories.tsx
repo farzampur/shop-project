@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import CategoryForm from "./CategoryForm";
+import { useStore } from "../../contexts/StoreContext";
+import api from "../../services/api";
 
 import {
   Alert,
+  Box,
   Button,
   CircularProgress,
   IconButton,
@@ -17,8 +21,6 @@ import {
   Typography,
 } from "@mui/material";
 
-import api from "../../services/api";
-
 interface Category {
   id: number;
   name: string;
@@ -29,63 +31,114 @@ interface Category {
 }
 
 function Categories() {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const {
+    activeStore,
+    loading: storeLoading,
+  } = useStore();
 
-  const loadCategories = () => {
+  const [categories, setCategories] =
+    useState<Category[]>([]);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  const [showForm, setShowForm] =
+    useState(false);
+
+  const loadCategories = async () => {
+    if (!activeStore) {
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError("");
 
-    api
-      .get("/products/categories/")
-      .then((response) => {
-        console.log("CATEGORIES:", response.data);
+    try {
+      const response = await api.get(
+        "/products/categories/",
+        {
+          params: {
+            store: activeStore.id,
+          },
+        }
+      );
 
-        const data = Array.isArray(response.data)
-          ? response.data
-          : response.data.results;
+      console.log(
+        "CATEGORIES:",
+        response.data
+      );
 
-        setCategories(data || []);
-      })
-      .catch((error) => {
-        console.error(
-          "CATEGORIES ERROR:",
-          error.response?.status
-        );
+      const data = Array.isArray(
+        response.data
+      )
+        ? response.data
+        : response.data.results;
 
-        console.error(
-          "CATEGORIES DATA:",
-          error.response?.data
-        );
+      setCategories(data || []);
 
-        setError("خطا در دریافت دسته‌بندی‌ها");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    } catch (error: any) {
+
+      console.error(
+        "CATEGORIES ERROR:",
+        error.response?.status
+      );
+
+      console.error(
+        "CATEGORIES DATA:",
+        error.response?.data
+      );
+
+      setError(
+        "خطا در دریافت دسته‌بندی‌ها"
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
   };
 
   useEffect(() => {
     loadCategories();
-  }, []);
+  }, [activeStore]);
 
-  const handleDelete = async (category: Category) => {
-    const confirmed = window.confirm(
-      `آیا از حذف دسته‌بندی «${category.name}» مطمئن هستید؟`
-    );
+
+  const handleDelete = async (
+    category: Category
+  ) => {
+
+    const confirmed =
+      window.confirm(
+        `آیا از حذف دسته‌بندی «${category.name}» مطمئن هستید؟`
+      );
 
     if (!confirmed) {
       return;
     }
 
+    setError("");
+
     try {
+
       await api.delete(
-        `/products/categories/${category.id}/`
+        `/products/categories/${category.id}/`,
+        {
+          params: {
+            store: activeStore?.id,
+          },
+        }
       );
 
-      loadCategories();
+      await loadCategories();
+
     } catch (error: any) {
+
       console.error(
         "DELETE CATEGORY ERROR:",
         error.response?.status
@@ -96,44 +149,106 @@ function Categories() {
         error.response?.data
       );
 
-      if (error.response?.status === 400) {
-        const responseData = error.response?.data;
+      if (
+        error.response?.status === 400
+      ) {
 
-        if (Array.isArray(responseData)) {
-          setError(responseData[0]);
-        } else if (responseData?.detail) {
-          setError(responseData.detail);
+        const responseData =
+          error.response?.data;
+
+        if (
+          Array.isArray(responseData)
+        ) {
+
+          setError(
+            responseData[0]
+          );
+
+        } else if (
+          responseData?.detail
+        ) {
+
+          setError(
+            responseData.detail
+          );
+
         } else {
+
           setError(
             "این دسته‌بندی دارای محصول است و قابل حذف نیست."
           );
         }
+
       } else {
-        setError("خطا در حذف دسته‌بندی");
+
+        setError(
+          "خطا در حذف دسته‌بندی"
+        );
+
       }
     }
   };
 
+
+  if (storeLoading) {
+    return (
+      <Typography>
+        در حال دریافت فروشگاه...
+      </Typography>
+    );
+  }
+
+
+  if (!activeStore) {
+    return (
+      <Alert severity="warning">
+        فروشگاه فعالی انتخاب نشده است.
+      </Alert>
+    );
+  }
+
+
+  if (showForm) {
+    return (
+      <CategoryForm
+        onSuccess={async () => {
+          setShowForm(false);
+          await loadCategories();
+        }}
+        onCancel={() => {
+          setShowForm(false);
+        }}
+      />
+    );
+  }
+
+
   return (
     <>
-      <Typography
-        variant="h4"
+      <Box
         sx={{
-          textAlign: "right",
+          display: "flex",
+          direction: "rtl",
+          alignItems: "center",
+          justifyContent: "space-between",
           mb: 3,
         }}
       >
-        دسته‌بندی‌ها
-      </Typography>
+        <Button
+          variant="contained"
+          onClick={() =>
+            setShowForm(true)
+          }
+        >
+          + افزودن دسته‌بندی
+        </Button>
 
-      <Button
-        variant="contained"
-        sx={{
-          mb: 3,
-        }}
-      >
-        + افزودن دسته‌بندی
-      </Button>
+        <Typography variant="h4">
+          دسته‌بندی‌های{" "}
+          {activeStore.name}
+        </Typography>
+      </Box>
+
 
       {error && (
         <Alert
@@ -146,6 +261,7 @@ function Categories() {
           {error}
         </Alert>
       )}
+
 
       {loading ? (
         <CircularProgress />
@@ -166,69 +282,109 @@ function Categories() {
           >
             <TableHead>
               <TableRow>
-                <TableCell align="right">
+
+                <TableCell>
+                  ردیف
+                </TableCell>
+
+                <TableCell>
                   نام دسته‌بندی
                 </TableCell>
 
-                <TableCell align="right">
-                  فروشگاه
-                </TableCell>
-
-                <TableCell align="right">
+                <TableCell>
                   وضعیت
                 </TableCell>
 
-                <TableCell align="right">
+                <TableCell>
                   تاریخ ایجاد
                 </TableCell>
 
-                <TableCell align="right">
+                <TableCell>
                   عملیات
                 </TableCell>
+
               </TableRow>
             </TableHead>
 
+
             <TableBody>
-              {categories.map((category) => (
-                <TableRow key={category.id}>
-                  <TableCell align="right">
-                    {category.name}
+
+              {categories.map(
+                (
+                  category,
+                  index
+                ) => (
+                  <TableRow
+                    key={category.id}
+                  >
+
+                    <TableCell>
+                      {index + 1}
+                    </TableCell>
+
+
+                    <TableCell>
+                      {category.name}
+                    </TableCell>
+
+
+                    <TableCell>
+                      {category.is_active
+                        ? "فعال"
+                        : "غیرفعال"}
+                    </TableCell>
+
+
+                    <TableCell>
+                      {category.created_at ||
+                        "-"}
+                    </TableCell>
+
+
+                    <TableCell>
+
+                      <IconButton
+                        color="primary"
+                        disabled
+                      >
+                        <EditIcon />
+                      </IconButton>
+
+
+                      <IconButton
+                        color="error"
+                        onClick={() =>
+                          handleDelete(
+                            category
+                          )
+                        }
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+
+                    </TableCell>
+
+                  </TableRow>
+                )
+              )}
+
+
+              {categories.length === 0 && (
+                <TableRow>
+
+                  <TableCell
+                    colSpan={5}
+                    align="center"
+                  >
+                    برای این فروشگاه
+                    دسته‌بندی ثبت نشده است.
                   </TableCell>
 
-                  <TableCell align="right">
-                    {category.store_name || "-"}
-                  </TableCell>
-
-                  <TableCell align="right">
-                    {category.is_active
-                      ? "فعال"
-                      : "غیرفعال"}
-                  </TableCell>
-
-                  <TableCell align="right">
-                    {category.created_at || "-"}
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <IconButton
-                      color="primary"
-                      disabled
-                    >
-                      <EditIcon />
-                    </IconButton>
-
-                    <IconButton
-                      color="error"
-                      onClick={() =>
-                        handleDelete(category)
-                      }
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
                 </TableRow>
-              ))}
+              )}
+
             </TableBody>
+
           </Table>
         </TableContainer>
       )}

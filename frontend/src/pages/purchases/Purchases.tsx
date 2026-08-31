@@ -14,10 +14,24 @@ import {
   TableHead,
   TableRow,
   Typography,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
 } from "@mui/material";
 
 import api from "../../services/api";
 import { useStore } from "../../contexts/StoreContext";
+
+interface PurchaseItem {
+  id: number;
+  product: number;
+  product_name: string;
+  quantity: string;
+  unit_price: string;
+  total_price: string;
+}
 
 interface Purchase {
   id: number;
@@ -32,6 +46,7 @@ interface Purchase {
   received: boolean;
   username: string;
   item_count: number;
+  items: PurchaseItem[];
 }
 
 function Purchases() {
@@ -44,7 +59,9 @@ function Purchases() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);  
-
+  const [selectedPurchase, setSelectedPurchase] =
+    useState<Purchase | null>(null);
+  
 	  const loadPurchases = async () => {
 	  if (!activeStore) {
 		setPurchases([]);
@@ -121,7 +138,9 @@ function Purchases() {
 		/>
 	  );
 	}
-
+	const handleCloseDetails = () => {
+	  setSelectedPurchase(null);
+	};
   return (
     <>
 		<Box
@@ -157,6 +176,7 @@ function Purchases() {
       {loading ? (
         <CircularProgress />
       ) : (
+	  <>
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -170,6 +190,7 @@ function Purchases() {
                 <TableCell>وضعیت</TableCell>
                 <TableCell>ثبت‌کننده</TableCell>
                 <TableCell>تاریخ</TableCell>
+				<TableCell>عملیات</TableCell>
               </TableRow>
             </TableHead>
 
@@ -218,6 +239,18 @@ function Purchases() {
                     <TableCell>
                       {purchase.created_at}
                     </TableCell>
+					
+					<TableCell>
+					  <Button
+						size="small"
+						variant="outlined"
+						onClick={() =>
+						  setSelectedPurchase(purchase)
+						}
+					  >
+						جزئیات
+					  </Button>
+					</TableCell>
                   </TableRow>
                 )
               )}
@@ -225,7 +258,7 @@ function Purchases() {
               {purchases.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     align="center"
                   >
                     خریدی برای این فروشگاه
@@ -236,6 +269,111 @@ function Purchases() {
             </TableBody>
           </Table>
         </TableContainer>
+
+		<Dialog
+		  open={selectedPurchase !== null}
+		  onClose={handleCloseDetails}
+		  fullWidth
+		  maxWidth="md"
+		  dir="rtl"
+		>
+		  <DialogTitle>
+			جزئیات خرید شماره{" "}
+			{selectedPurchase?.id}
+		  </DialogTitle>
+
+		  <DialogContent>
+			{selectedPurchase && (
+			  <>
+				<Typography sx={{ mb: 1 }}>
+				  فروشگاه:{" "}
+				  {selectedPurchase.store_name}
+				</Typography>
+
+				<Typography sx={{ mb: 1 }}>
+				  تأمین‌کننده:{" "}
+				  {selectedPurchase.supplier_name}
+				</Typography>
+
+				<Typography sx={{ mb: 1 }}>
+				  فاکتور:{" "}
+				  {selectedPurchase.invoice_number || "-"}
+				</Typography>
+
+				<Typography sx={{ mb: 2 }}>
+				  تاریخ:{" "}
+				  {selectedPurchase.created_at}
+				</Typography>
+
+				<Divider sx={{ mb: 2 }} />
+
+				<Table>
+				  <TableHead>
+					<TableRow>
+					  <TableCell>ردیف</TableCell>
+					  <TableCell>محصول</TableCell>
+					  <TableCell>تعداد</TableCell>
+					  <TableCell>قیمت واحد</TableCell>
+					  <TableCell>مبلغ</TableCell>
+					</TableRow>
+				  </TableHead>
+
+				  <TableBody>
+					{selectedPurchase.items.map(
+					  (item, index) => (
+						<TableRow key={item.id}>
+						  <TableCell>
+							{index + 1}
+						  </TableCell>
+
+						  <TableCell>
+							{item.product_name}
+						  </TableCell>
+
+						  <TableCell>
+							{item.quantity}
+						  </TableCell>
+
+						  <TableCell>
+							{Number(
+							  item.unit_price
+							).toLocaleString("fa-IR")}
+						  </TableCell>
+
+						  <TableCell>
+							{Number(
+							  item.total_price
+							).toLocaleString("fa-IR")}
+						  </TableCell>
+						</TableRow>
+					  )
+					)}
+				  </TableBody>
+				</Table>
+
+				<Divider sx={{ my: 2 }} />
+
+				<Typography
+				  variant="h6"
+				  sx={{ textAlign: "right" }}
+				>
+				  مبلغ کل:{" "}
+				  {Number(
+					selectedPurchase.total_amount
+				  ).toLocaleString("fa-IR")}{" "}
+				  تومان
+				</Typography>
+			  </>
+			)}
+		  </DialogContent>
+
+		  <DialogActions>
+			<Button onClick={handleCloseDetails}>
+			  بستن
+			</Button>
+		  </DialogActions>
+		</Dialog>
+	  </>	
       )}
     </>
   );

@@ -587,7 +587,9 @@ class PurchaseViewSet(
 
         has_access = (
             self.request.user.user_stores
-            .filter(store=store)
+            .filter(
+                store=store
+            )
             .exists()
         )
 
@@ -598,7 +600,8 @@ class PurchaseViewSet(
             )
 
             raise PermissionDenied(
-                "شما به این فروشگاه دسترسی ندارید."
+                "شما به این فروشگاه "
+                "دسترسی ندارید."
             )
 
         purchase = serializer.save(

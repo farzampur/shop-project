@@ -9,8 +9,12 @@ import {
   Typography,
 } from "@mui/material";
 import { login, saveTokens } from "../services/authService";
+import {
+  useNavigate,
+} from "react-router-dom";
 
 function Login() {
+  const navigate = useNavigate();	
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -29,7 +33,9 @@ function Login() {
 	  console.log("TOKENS FROM LOGIN:", tokens);
 
   	  saveTokens(tokens);
-
+	  window.dispatchEvent(
+	    new Event("auth-change")
+	  );
 	  console.log(
 	    "ACCESS AFTER SAVE:",
 	    localStorage.getItem("access_token")
@@ -41,8 +47,9 @@ function Login() {
 	  );
 
       console.log("Login successful");
-      window.location.href = "/dashboard";
-
+	  navigate("/dashboard", {
+		  replace: true,
+      });
     } catch (error: any) {
 	  console.error("LOGIN ERROR:", error);
 	  console.error("STATUS:", error.response?.status);
