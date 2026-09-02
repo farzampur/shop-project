@@ -1,4 +1,5 @@
 from rest_framework.views import APIView
+from rest_framework import serializers
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
@@ -136,7 +137,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         StoreRolePermission,
     ]
 
-
     def get_queryset(self):
 
         queryset = Product.objects.filter(
@@ -152,8 +152,6 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-
-
     def perform_create(self, serializer):
 
         category = serializer.validated_data["category"]
@@ -166,46 +164,6 @@ class ProductViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 "فروشگاه انتخاب نشده است."
             )
-
-        if str(category.store_id) != str(store_id):
-            from rest_framework.exceptions import ValidationError
-
-            raise ValidationError(
-                "دسته‌بندی انتخاب‌شده متعلق به فروشگاه فعال نیست."
-            )
-
-        has_access = self.request.user.user_stores.filter(
-            store_id=store_id
-        ).exists()
-
-        if not has_access:
-            from rest_framework.exceptions import PermissionDenied
-
-            raise PermissionDenied(
-                "شما به این فروشگاه دسترسی ندارید."
-            )
-
-        serializer.save()
-
-
-
-    def perform_update(self, serializer):
-
-        product = self.get_object()
-
-        store_id = self.request.query_params.get("store")
-
-        if not store_id:
-            from rest_framework.exceptions import ValidationError
-
-            raise ValidationError(
-                "فروشگاه انتخاب نشده است."
-            )
-
-        category = serializer.validated_data.get(
-            "category",
-            product.category
-        )
 
         if str(category.store_id) != str(store_id):
             from rest_framework.exceptions import ValidationError
@@ -612,7 +570,7 @@ class PurchaseViewSet(
             purchase.received
             and purchase.total_amount > 0
         ):
-            self._create_supplier_debt(
+            self._sync_supplier_debt(
                 purchase
             )
 
@@ -624,9 +582,23 @@ class PurchaseViewSet(
 
         purchase = self.get_object()
 
-        old_received = (
-            purchase.received
-        )
+        # خرید دریافت‌شده قابل ویرایش نیست
+        if purchase.received:
+
+            from rest_framework.exceptions import (
+                ValidationError
+            )
+
+            raise ValidationError(
+                {
+                    "detail": (
+                        "خرید دریافت‌شده "
+                        "قابل ویرایش نیست."
+                    )
+                }
+            )
+
+        old_received = purchase.received
 
         store = serializer.validated_data.get(
             "store",
@@ -635,7 +607,9 @@ class PurchaseViewSet(
 
         has_access = (
             self.request.user.user_stores
-            .filter(store=store)
+            .filter(
+                store=store
+            )
             .exists()
         )
 
@@ -646,7 +620,8 @@ class PurchaseViewSet(
             )
 
             raise PermissionDenied(
-                "شما به این فروشگاه دسترسی ندارید."
+                "شما به این فروشگاه "
+                "دسترسی ندارید."
             )
 
         purchase = serializer.save()
@@ -656,26 +631,79 @@ class PurchaseViewSet(
             and purchase.received
             and purchase.total_amount > 0
         ):
-            self._create_supplier_debt(
+            self._sync_supplier_debt(
                 purchase
             )
 
-    def _create_supplier_debt(
+    @transaction.atomic
+    def perform_destroy(
+        self,
+        instance
+    ):
+        """
+        حذف خرید و حذف بدهی مرتبط با آن.
+        """
+
+        # خرید دریافت‌شده قابل حذف نیست
+        if instance.received:
+
+            from rest_framework.exceptions import (
+                ValidationError
+            )
+
+            raise ValidationError(
+                {
+                    "detail": (
+                        "این خرید دریافت شده است "
+                        "و قابل حذف نیست."
+                    )
+                }
+            )
+
+        SupplierTransaction.objects.filter(
+            transaction_type="purchase",
+            reference_id=instance.id,
+        ).delete()
+
+        instance.delete()
+
+    def _sync_supplier_debt(
         self,
         purchase
     ):
+        """
+        همگام‌سازی بدهی تأمین‌کننده
+        با مبلغ نهایی خرید.
+        """
 
-        exists = (
+        supplier_transaction = (
             SupplierTransaction.objects
             .filter(
                 supplier=purchase.supplier,
                 transaction_type="purchase",
                 reference_id=purchase.id,
             )
-            .exists()
+            .first()
         )
 
-        if exists:
+        if supplier_transaction:
+
+            supplier_transaction.amount = (
+                purchase.total_amount
+            )
+
+            supplier_transaction.description = (
+                f"بدهی بابت خرید "
+                f"شماره {purchase.id}"
+            )
+
+            supplier_transaction.save(
+                update_fields=[
+                    "amount",
+                    "description",
+                ]
+            )
+
             return
 
         SupplierTransaction.objects.create(
@@ -688,6 +716,7 @@ class PurchaseViewSet(
                 f"شماره {purchase.id}"
             ),
         )
+        
         
 class PurchaseItemViewSet(
     viewsets.ModelViewSet

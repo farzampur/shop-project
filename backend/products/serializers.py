@@ -395,10 +395,7 @@ class PurchaseSerializer(
             )
 
         # در ایجاد خرید، حداقل یک قلم لازم است
-        if (
-            not self.instance
-            and not items
-        ):
+        if items is not None and not items:
             raise serializers.ValidationError(
                 {
                     "items": (
@@ -483,6 +480,79 @@ class PurchaseSerializer(
         )
 
         return purchase
+        
+        
+        
+    @transaction.atomic
+    def update(
+        self,
+        instance,
+        validated_data
+    ):
+        """
+        ویرایش اتمیک خرید چندقلمی.
+        """
+
+        items_data = validated_data.pop(
+            "items",
+            None
+        )
+
+        # ویرایش اطلاعات اصلی خرید
+        for attr, value in validated_data.items():
+            setattr(
+                instance,
+                attr,
+                value
+            )
+
+        instance.save()
+
+        # اگر اقلام ارسال نشده‌اند،
+        # فقط اطلاعات اصلی خرید تغییر کرده‌اند
+        if items_data is None:
+            return instance
+
+        # حذف اقلام قبلی
+        instance.items.all().delete()
+
+        total_amount = 0
+
+        # ایجاد اقلام جدید
+        for item_data in items_data:
+
+            quantity = item_data["quantity"]
+
+            unit_price = item_data[
+                "unit_price"
+            ]
+
+            total_price = (
+                quantity *
+                unit_price
+            )
+
+            PurchaseItem.objects.create(
+                purchase=instance,
+                product=item_data["product"],
+                quantity=quantity,
+                unit_price=unit_price,
+                total_price=total_price,
+            )
+
+            total_amount += total_price
+
+        # به‌روزرسانی مبلغ کل
+        instance.total_amount = total_amount
+
+        instance.save(
+            update_fields=[
+                "total_amount",
+                "updated_at",
+            ]
+        )
+
+        return instance        
         
 class SupplierTransactionSerializer(
     serializers.ModelSerializer

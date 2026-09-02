@@ -47,11 +47,37 @@ interface PurchaseItem {
 interface PurchaseFormProps {
   onSuccess: () => void;
   onCancel: () => void;
+  editingPurchase?: Purchase | null;
+}
+
+interface PurchaseItemData {
+  id: number;
+  product: number;
+  product_name: string;
+  quantity: string;
+  unit_price: string;
+  total_price: string;
+}
+
+interface Purchase {
+  id: number;
+  supplier: number;
+  supplier_name: string;
+  store: number;
+  store_name: string;
+  invoice_number: string;
+  total_amount: string;
+  created_at: string;
+  received: boolean;
+  username: string;
+  item_count: number;
+  items: PurchaseItemData[];
 }
 
 function PurchaseForm({
   onSuccess,
   onCancel,
+  editingPurchase,  
 }: PurchaseFormProps) {
 
   const { activeStore } = useStore();
@@ -169,6 +195,32 @@ function PurchaseForm({
   }, [activeStore]);
 
 
+	  // پر کردن فرم در حالت ویرایش
+	  useEffect(() => {
+		if (!editingPurchase) {
+		  return;
+		}
+
+		setSupplier(editingPurchase.supplier);
+
+		setInvoiceNumber(
+		  editingPurchase.invoice_number || ""
+		);
+
+		setReceived(
+		  editingPurchase.received
+		);
+
+		setItems(
+		  editingPurchase.items.map((item) => ({
+			product: item.product,
+			quantity: item.quantity,
+			unit_price: item.unit_price,
+		  }))
+		);
+	  }, [editingPurchase]);
+
+
   // افزودن ردیف جدید
   const handleAddItem = () => {
 
@@ -278,108 +330,114 @@ function PurchaseForm({
   );
 
 
-  // ثبت خرید
-  const handleSubmit = async (
-    event: React.FormEvent
-  ) => {
+// ثبت یا ویرایش خرید
+const handleSubmit = async (
+  event: React.FormEvent
+) => {
+  event.preventDefault();
 
-    event.preventDefault();
+  setError("");
 
-    setError("");
+  if (!activeStore) {
+    setError(
+      "فروشگاه فعالی انتخاب نشده است."
+    );
+    return;
+  }
 
-    if (!activeStore) {
+  if (supplier === "") {
+    setError(
+      "تأمین‌کننده را انتخاب کنید."
+    );
+    return;
+  }
+
+  if (items.length === 0) {
+    setError(
+      "حداقل یک قلم کالا اضافه کنید."
+    );
+    return;
+  }
+
+  for (const item of items) {
+    if (item.product === "") {
       setError(
-        "فروشگاه فعالی انتخاب نشده است."
+        "برای تمام ردیف‌ها محصول انتخاب کنید."
       );
       return;
     }
 
-    if (supplier === "") {
+    if (Number(item.quantity) <= 0) {
       setError(
-        "تأمین‌کننده را انتخاب کنید."
+        "تعداد باید بیشتر از صفر باشد."
       );
       return;
     }
 
-    if (items.length === 0) {
+    if (Number(item.unit_price) < 0) {
       setError(
-        "حداقل یک قلم کالا اضافه کنید."
+        "قیمت نمی‌تواند منفی باشد."
       );
       return;
     }
+  }
 
-    for (const item of items) {
+  setLoading(true);
 
-      if (item.product === "") {
-        setError(
-          "برای تمام ردیف‌ها محصول انتخاب کنید."
-        );
-        return;
-      }
+  try {
+    const purchaseData = {
+      supplier,
+      store: activeStore.id,
+      invoice_number: invoiceNumber.trim(),
+      received,
+      items: items.map((item) => ({
+        product: item.product,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      })),
+    };
 
-      if (Number(item.quantity) <= 0) {
-        setError(
-          "تعداد باید بیشتر از صفر باشد."
-        );
-        return;
-      }
-
-      if (Number(item.unit_price) < 0) {
-        setError(
-          "قیمت نمی‌تواند منفی باشد."
-        );
-        return;
-      }
+    if (editingPurchase) {
+      // ویرایش خرید
+      await api.put(
+        `/products/purchases/${editingPurchase.id}/`,
+        purchaseData
+      );
+    } else {
+      // ثبت خرید جدید
+      await api.post(
+        "/products/purchases/",
+        purchaseData
+      );
     }
 
-    setLoading(true);
+    onSuccess();
 
-    try {
+  } catch (error: any) {
+    console.error(
+      "PURCHASE SAVE ERROR:",
+      error.response?.status
+    );
 
-			  // ایجاد خرید اصلی
-		await api.post(
-		  "/products/purchases/",
-		  {
-			supplier,
-			store: activeStore.id,
-			invoice_number: invoiceNumber.trim(),
-			received,
+    console.error(
+      "PURCHASE SAVE DATA:",
+      error.response?.data
+    );
 
-			items: items.map((item) => ({
-			  product: item.product,
-			  quantity: item.quantity,
-			  unit_price: item.unit_price,
-			})),
-		  }
-		);
-
-      onSuccess();
-
-    } catch (error: any) {
-
-      console.error(
-        "CREATE PURCHASE ERROR:",
-        error.response?.status
-      );
-
-      console.error(
-        "CREATE PURCHASE DATA:",
-        error.response?.data
-      );
-
-      setError(
-        error.response?.data
-          ? JSON.stringify(
-              error.response.data
-            )
+    setError(
+      error.response?.data
+        ? JSON.stringify(
+            error.response.data
+          )
+        : editingPurchase
+          ? "خطا در ویرایش خرید."
           : "خطا در ثبت خرید."
-      );
+    );
 
-    } finally {
-
-      setLoading(false);
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
 
   if (!activeStore) {
@@ -403,7 +461,9 @@ function PurchaseForm({
     >
 
       <Typography variant="h5">
-        ثبت خرید جدید
+         {editingPurchase
+			? "ویرایش خرید"
+			: "ثبت خرید جدید"}
       </Typography>
 
 
@@ -768,8 +828,10 @@ function PurchaseForm({
           }
         >
           {loading
-            ? "در حال ثبت..."
-            : "ثبت خرید"}
+			 ? "در حال ذخیره..."
+				: editingPurchase
+				  ? "ذخیره تغییرات"
+				  : "ثبت خرید"}
         </Button>
 
 
