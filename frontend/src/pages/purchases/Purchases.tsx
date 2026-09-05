@@ -26,33 +26,15 @@ import {
   TextField,
 } from "@mui/material";
 
-import api from "../../services/api";
+import {
+  createPurchaseReturn,
+  deletePurchase,
+  listPurchases,
+  receivePurchase,
+  type Purchase,
+} from "../../services/purchaseService";
 import { useStore } from "../../contexts/StoreContext";
 
-interface PurchaseItem {
-  id: number;
-  product: number;
-  product_name: string;
-  quantity: string;
-  unit_price: string;
-  total_price: string;
-}
-
-interface Purchase {
-  id: number;
-  supplier: number;
-  supplier_name: string;
-  store: number;
-  store_name: string;
-  user: number;
-  invoice_number: string;
-  total_amount: string;
-  created_at: string;
-  received: boolean;
-  username: string;
-  item_count: number;
-  items: PurchaseItem[];
-}
 
 function Purchases() {
   const {
@@ -72,13 +54,13 @@ function Purchases() {
   const [selectedPurchase, setSelectedPurchase] =
     useState<Purchase | null>(null);
 
-  const [deletePurchase, setDeletePurchase] =
+  const [purchaseToDelete, setPurchaseToDelete] =
     useState<Purchase | null>(null);
 
   const [deleting, setDeleting] =
     useState(false);
   
-  const [receivePurchase, setReceivePurchase] =
+  const [purchaseToReceive, setPurchaseToReceive] =
     useState<Purchase | null>(null);
 
   const [receiving, setReceiving] =
@@ -105,20 +87,8 @@ function Purchases() {
     setError("");
 
     try {
-      const response = await api.get(
-        "/products/purchases/",
-        {
-          params: {
-            store: activeStore.id,
-          },
-        }
-      );
-
-      const data = Array.isArray(response.data)
-        ? response.data
-        : response.data.results;
-
-      setPurchases(data || []);
+      const data = await listPurchases(activeStore.id);
+      setPurchases(data);
     } catch (error: any) {
       console.error(
         "PURCHASES ERROR:",
@@ -190,18 +160,16 @@ function Purchases() {
   };
 
 	const handleDeletePurchase = async () => {
-	  if (!deletePurchase) {
+	  if (!purchaseToDelete) {
 		return;
 	  }
 	  setDeleting(true);
 	  setError("");
 
 	  try {
-		await api.delete(
-		  `/products/purchases/${deletePurchase.id}/`
-		);
+    await deletePurchase(purchaseToDelete.id);
 
-		setDeletePurchase(null);
+		setPurchaseToDelete(null);
 
 		await loadPurchases();
 	  } catch (error: any) {
@@ -225,7 +193,7 @@ function Purchases() {
 	};
 
 	const handleReceivePurchase = async () => {
-	  if (!receivePurchase) {
+	  if (!purchaseToReceive) {
 		return;
 	  }
 
@@ -233,11 +201,9 @@ function Purchases() {
 	  setError("");
 
 	  try {
-		await api.post(
-		  `/products/purchases/${receivePurchase.id}/receive/`
-		);
+    await receivePurchase(purchaseToReceive.id);
 
-		setReceivePurchase(null);
+		setPurchaseToReceive(null);
 
 		await loadPurchases();
 	  } catch (error: any) {
@@ -278,15 +244,12 @@ function Purchases() {
 		  return;
 		}
 
-		await api.post(
-		  "/products/purchase-returns/",
-		  {
-			purchase: returnPurchase.id,
-			product: returnProduct,
-			quantity: returnQuantity,
-			unit_price: selectedItem.unit_price,
-		  }
-		);
+    await createPurchaseReturn({
+      purchase: returnPurchase.id,
+      product: returnProduct,
+      quantity: returnQuantity,
+      unit_price: selectedItem.unit_price,
+    });
 
 		setReturnPurchase(null);
 		setReturnProduct("");
@@ -446,7 +409,7 @@ function Purchases() {
 						    color="success"
 						    disabled={purchase.received}
 						    onClick={() =>
-							  setReceivePurchase(purchase)
+							  setPurchaseToReceive(purchase)
 						    }
 						  >
 						    دریافت
@@ -470,7 +433,7 @@ function Purchases() {
 						    color="error"
 						    disabled={purchase.received}
 						    onClick={() =>
-						  	setDeletePurchase(purchase)
+						  	setPurchaseToDelete(purchase)
 						    }
 						  >
 						    حذف
@@ -604,10 +567,10 @@ function Purchases() {
 
 		  {/* دیالوگ تأیید حذف */}
 		  <Dialog
-  		    open={deletePurchase !== null}
+  		    open={purchaseToDelete !== null}
 		    onClose={() => {
 			  if (!deleting) {
-			    setDeletePurchase(null);
+			    setPurchaseToDelete(null);
 			  }
 		    }}
 		    dir="rtl"
@@ -620,7 +583,7 @@ function Purchases() {
 			  <Typography>
 			    آیا از حذف خرید شماره{" "}
 			    <strong>
-				  {deletePurchase?.id}
+				  {purchaseToDelete?.id}
 			    </strong>{" "}
 			    مطمئن هستید؟
 			  </Typography>
@@ -638,7 +601,7 @@ function Purchases() {
 		    <DialogActions>
 			  <Button
 			    onClick={() =>
-				  setDeletePurchase(null)
+				  setPurchaseToDelete(null)
 			    }
 			    disabled={deleting}
 			  >
@@ -659,10 +622,10 @@ function Purchases() {
 		  </Dialog>		  
 		  
 		<Dialog
-		  open={receivePurchase !== null}
+		  open={purchaseToReceive !== null}
 		  onClose={() => {
 			if (!receiving) {
-			  setReceivePurchase(null);
+			  setPurchaseToReceive(null);
 			}
 		  }}
 		  dir="rtl"
@@ -675,7 +638,7 @@ function Purchases() {
 			<Typography>
 			  آیا خرید شماره{" "}
 			  <strong>
-				{receivePurchase?.id}
+				{purchaseToReceive?.id}
 			  </strong>{" "}
 			  را دریافت می‌کنید؟
 			</Typography>
@@ -689,7 +652,7 @@ function Purchases() {
 		  <DialogActions>
 			<Button
 			  onClick={() =>
-				setReceivePurchase(null)
+				setPurchaseToReceive(null)
 			  }
 			  disabled={receiving}
 			>

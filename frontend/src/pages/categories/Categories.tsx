@@ -3,7 +3,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CategoryForm from "./CategoryForm";
 import { useStore } from "../../contexts/StoreContext";
-import api from "../../services/api";
+import { deleteCategory, listCategories } from "../../services/categoryService";
 
 import {
   Alert,
@@ -59,27 +59,8 @@ function Categories() {
     setError("");
 
     try {
-      const response = await api.get(
-        "/products/categories/",
-        {
-          params: {
-            store: activeStore.id,
-          },
-        }
-      );
-
-      console.log(
-        "CATEGORIES:",
-        response.data
-      );
-
-      const data = Array.isArray(
-        response.data
-      )
-        ? response.data
-        : response.data.results;
-
-      setCategories(data || []);
+      const data = await listCategories(activeStore.id);
+      setCategories(data);
 
     } catch (error: any) {
 
@@ -126,14 +107,12 @@ function Categories() {
 
     try {
 
-      await api.delete(
-        `/products/categories/${category.id}/`,
-        {
-          params: {
-            store: activeStore?.id,
-          },
-        }
-      );
+      if (!activeStore) {
+        setError("فروشگاه فعالی انتخاب نشده است.");
+        return;
+      }
+
+      await deleteCategory(category.id, activeStore.id);
 
       await loadCategories();
 

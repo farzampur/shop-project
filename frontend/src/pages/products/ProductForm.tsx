@@ -15,14 +15,8 @@ import {
   FormControlLabel,
 } from "@mui/material";
 
-import api from "../../services/api";
-
-interface Category {
-  id: number;
-  name: string;
-  store_name: string;
-  is_active: boolean;
-}
+import { listCategories, type Category } from "../../services/categoryService";
+import { createProduct, updateProduct } from "../../services/productService";
 
 interface Product {
   id: number;
@@ -81,19 +75,8 @@ function ProductForm({
 
 	  setCategoriesLoading(true);
 
-	  api
-		.get("/products/categories/", {
-		  params: {
-			store: activeStore.id,
-		  },
-		})
-		.then((response) => {
-		  const data = Array.isArray(response.data)
-			? response.data
-			: response.data.results;
-
-		  setCategories(data || []);
-		})
+    void listCategories(activeStore.id)
+      .then(setCategories)
 		.catch((error) => {
 		  console.error(
 			"CATEGORIES ERROR:",
@@ -157,27 +140,11 @@ function ProductForm({
         data.barcode = barcode.trim();
       }
 
-	  if (isEditMode && product) {
-	    await api.patch(
-	  	`/products/products/${product.id}/`,
-	  	  data,
-		  {
-		    params: {
-			  store: activeStore.id,
-		    },
-		  }
-	    );
-	  } else {
-	   await api.post(
-		  "/products/products/",
-		  data,
-		  {
-		    params: {
-			  store: activeStore.id,
-		    },
-		  }
-	    );
-	  }
+      if (isEditMode && product) {
+        await updateProduct(product.id, activeStore.id, data);
+      } else {
+        await createProduct(activeStore.id, data);
+      }
 
       onSuccess();
     } catch (error: any) {

@@ -23,20 +23,18 @@ import {
 
 import DeleteIcon from "@mui/icons-material/Delete";
 
-import api from "../../services/api";
+import type { Product } from "../../services/productService";
+import {
+  createPurchase,
+  listPurchaseProducts,
+  listSuppliers,
+  updatePurchase,
+  type Purchase,
+  type Supplier,
+} from "../../services/purchaseService";
 import { useStore } from "../../contexts/StoreContext";
 
-interface Supplier {
-  id: number;
-  name: string;
-}
 
-interface Product {
-  id: number;
-  name: string;
-  purchase_price?: string;
-  sale_price?: string;
-}
 
 interface PurchaseItem {
   product: number | "";
@@ -50,29 +48,7 @@ interface PurchaseFormProps {
   editingPurchase?: Purchase | null;
 }
 
-interface PurchaseItemData {
-  id: number;
-  product: number;
-  product_name: string;
-  quantity: string;
-  unit_price: string;
-  total_price: string;
-}
 
-interface Purchase {
-  id: number;
-  supplier: number;
-  supplier_name: string;
-  store: number;
-  store_name: string;
-  invoice_number: string;
-  total_amount: string;
-  created_at: string;
-  received: boolean;
-  username: string;
-  item_count: number;
-  items: PurchaseItemData[];
-}
 
 function PurchaseForm({
   onSuccess,
@@ -128,48 +104,13 @@ function PurchaseForm({
     setError("");
 
     Promise.all([
-      api.get("/products/suppliers/", {
-        params: {
-          store: activeStore.id,
-        },
-      }),
-
-      api.get("/products/products/", {
-        params: {
-          store: activeStore.id,
-        },
-      }),
+      listSuppliers(activeStore.id),
+      listPurchaseProducts(activeStore.id),
     ])
-
-      .then(
-        ([
-          supplierResponse,
-          productResponse,
-        ]) => {
-
-          const supplierData =
-            Array.isArray(
-              supplierResponse.data
-            )
-              ? supplierResponse.data
-              : supplierResponse.data.results;
-
-          const productData =
-            Array.isArray(
-              productResponse.data
-            )
-              ? productResponse.data
-              : productResponse.data.results;
-
-          setSuppliers(
-            supplierData || []
-          );
-
-          setProducts(
-            productData || []
-          );
-        }
-      )
+      .then(([supplierData, productData]) => {
+        setSuppliers(supplierData);
+        setProducts(productData);
+      })
 
       .catch((error) => {
 
@@ -391,7 +332,7 @@ const handleSubmit = async (
       invoice_number: invoiceNumber.trim(),
       received,
       items: items.map((item) => ({
-        product: item.product,
+        product: Number(item.product),
         quantity: item.quantity,
         unit_price: item.unit_price,
       })),
@@ -399,16 +340,10 @@ const handleSubmit = async (
 
     if (editingPurchase) {
       // ویرایش خرید
-      await api.put(
-        `/products/purchases/${editingPurchase.id}/`,
-        purchaseData
-      );
+      await updatePurchase(editingPurchase.id, purchaseData);
     } else {
       // ثبت خرید جدید
-      await api.post(
-        "/products/purchases/",
-        purchaseData
-      );
+      await createPurchase(purchaseData);
     }
 
     onSuccess();

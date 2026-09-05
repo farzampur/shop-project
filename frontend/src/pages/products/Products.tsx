@@ -17,20 +17,10 @@ import {
   Typography,
 } from "@mui/material";
 
-import api from "../../services/api";
+import { deleteProduct, listProducts, type Product } from "../../services/productService";
 import ProductForm from "./ProductForm";
 import { useStore } from "../../contexts/StoreContext";
 
-interface Product {
-  id: number;
-  name: string;
-  barcode?: string;
-  category: number;
-  unit?: string;
-  purchase_price?: string;
-  sale_price?: string;
-  is_active?: boolean;
-}
 
 function Products() {
   const { activeStore } = useStore();	
@@ -47,38 +37,16 @@ function Products() {
 		return;
 	  }
 
-	  setLoading(true);
-	  setError("");
+    setLoading(true);
+    setError("");
 
-  	  api.get("/products/products/", {
-	    params: {
-		  store: activeStore?.id,
-	    },
-	  })
-      .then((response) => {
-        console.log("PRODUCTS:", response.data);
-
-        const data = Array.isArray(response.data)
-          ? response.data
-          : response.data.results;
-
-        setProducts(data || []);
-      })
+    void listProducts(activeStore.id)
+      .then(setProducts)
       .catch((error) => {
-        console.error(
-          "PRODUCTS ERROR:",
-          error.response?.status
-        );
-        console.error(
-          "PRODUCTS DATA:",
-          error.response?.data
-        );
-
+        console.error("PRODUCTS ERROR:", error);
         setError("خطا در دریافت محصولات");
       })
-      .finally(() => {
-        setLoading(false);
-      });
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -95,9 +63,7 @@ function Products() {
 	  }
 
 	  try {
-		await api.delete(
-		  `/products/products/${product.id}/`
-		);
+    await deleteProduct(product.id);
 
 		loadProducts();
   	  } catch (error: any) {

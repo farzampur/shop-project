@@ -8,7 +8,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import api from "../../services/api";
+import { createCategory } from "../../services/categoryService";
 import { useStore } from "../../contexts/StoreContext";
 
 interface CategoryFormProps {
@@ -52,13 +52,10 @@ function CategoryForm({
     setLoading(true);
 
     try {
-      await api.post(
-        "/products/categories/",
-        {
-          name: name.trim(),
-          store: activeStore.id,
-        }
-      );
+      await createCategory({
+        name: name.trim(),
+        store: activeStore.id,
+      });
 
       onSuccess();
 

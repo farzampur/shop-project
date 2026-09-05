@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 
 from .models import UserStore
 from core.models import Store
+from core.serializers import StoreSerializer
 
 
 class UserStoreSerializer(serializers.ModelSerializer):
@@ -124,3 +125,34 @@ class StoreUserCreateSerializer(serializers.Serializer):
         )
 
         return user
+
+class MeSerializer(serializers.ModelSerializer):
+    stores = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "first_name",
+            "last_name",
+            "email",
+            "is_staff",
+            "is_superuser",
+            "stores",
+        ]
+
+    def get_stores(self, user):
+        rows = (
+            UserStore.objects
+            .filter(user=user, store__is_active=True)
+            .select_related("store")
+            .order_by("store__name")
+        )
+        result = []
+        for row in rows:
+            data = StoreSerializer(row.store).data
+            data["role"] = row.role
+            data["role_display"] = row.get_role_display()
+            result.append(data)
+        return result

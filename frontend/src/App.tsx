@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
+import RoleRoute from "./components/RoleRoute";
+import { ROUTE_ROLES } from "./services/routePermissions";
 import DashboardLayout from "./layouts/DashboardLayout";
 import Products from "./pages/products/Products";
 import Categories from "./pages/categories/Categories";
@@ -25,40 +27,75 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.dashboard}>
+                <Dashboard />
+              </RoleRoute>
+            }
+          />
 
           {/* فعلاً صفحات آزمایشی */}         
 		  <Route
             path="/products"
-            element={<Products />}
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.products}>
+                <Products />
+              </RoleRoute>
+            }
           />
 		  <Route
-		    path="/categories"
-		    element={<Categories />}
-		  />
+            path="/categories"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.categories}>
+                <Categories />
+              </RoleRoute>
+            }
+          />
 		  <Route
-		    path="/purchases"
-		    element={<Purchases />}
-		  />
+            path="/purchases"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.purchases}>
+                <Purchases />
+              </RoleRoute>
+            }
+          />
 
           <Route
             path="/sales"
-            element={<h2>فروش‌ها</h2>}
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.sales}>
+                <h2>فروش‌ها</h2>
+              </RoleRoute>
+            }
           />
 
           <Route
             path="/customers"
-            element={<h2>مشتریان</h2>}
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.customers}>
+                <h2>مشتریان</h2>
+              </RoleRoute>
+            }
           />
 
           <Route
             path="/cashbox"
-            element={<h2>صندوق</h2>}
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.cashbox}>
+                <h2>صندوق</h2>
+              </RoleRoute>
+            }
           />
 
           <Route
             path="/reports"
-            element={<h2>گزارش‌ها</h2>}
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.reports}>
+                <h2>گزارش‌ها</h2>
+              </RoleRoute>
+            }
           />
         </Route>
 

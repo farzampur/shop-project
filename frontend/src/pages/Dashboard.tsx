@@ -1,19 +1,18 @@
 import { useEffect } from "react";
 import { Box, Paper, Typography } from "@mui/material";
-import api from "../services/api";
+import { listProducts } from "../services/productService";
+import { useStore } from "../contexts/StoreContext";
 
 
 function Dashboard() {
+  const { activeStore } = useStore();
+
   useEffect(() => {
-    api.get("/products/products/")
-      .then((response) => {
-        console.log("PRODUCTS API SUCCESS:", response.data);
-      })
-      .catch((error) => {
-        console.error("PRODUCTS API ERROR:", error.response?.status);
-        console.error("PRODUCTS API DATA:", error.response?.data);
-      });
-  }, []);
+    if (!activeStore) return;
+    void listProducts(activeStore.id)
+      .then((products) => console.log("PRODUCTS API SUCCESS:", products))
+      .catch((error) => console.error("PRODUCTS API ERROR:", error));
+  }, [activeStore]);
   return (
     <Box
       sx={{

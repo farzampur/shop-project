@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import UserStoreViewSet
+from .views import MeView, UserStoreViewSet
 
 
 router = DefaultRouter()
@@ -13,5 +13,6 @@ router.register(
 )
 
 urlpatterns = [
+    path("me/", MeView.as_view(), name="me"),
     path("", include(router.urls)),
 ]

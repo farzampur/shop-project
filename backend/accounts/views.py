@@ -1,11 +1,13 @@
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import UserStore
 from .serializers import (
     UserStoreSerializer,
     StoreUserCreateSerializer,
+    MeSerializer,
 )
 from .permissions import StoreUserPermission
 
@@ -59,3 +61,9 @@ class UserStoreViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
             
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(MeSerializer(request.user).data)
