@@ -7,6 +7,7 @@ import RoleRoute from "./components/RoleRoute";
 import { ROUTE_ROLES } from "./services/routePermissions";
 import DashboardLayout from "./layouts/DashboardLayout";
 import Products from "./pages/products/Products";
+import Inventory from "./pages/inventory/Inventory";
 import Categories from "./pages/categories/Categories";
 import { StoreProvider } from "./contexts/StoreContext";
 import Purchases from "./pages/purchases/Purchases";
@@ -45,6 +46,15 @@ function App() {
               </RoleRoute>
             }
           />
+          <Route
+            path="/inventory"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.inventory}>
+                <Inventory />
+              </RoleRoute>
+            }
+          />
+
 		  <Route
             path="/categories"
             element={

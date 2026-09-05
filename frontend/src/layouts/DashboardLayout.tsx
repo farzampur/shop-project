@@ -40,6 +40,7 @@ const menuItems: readonly MenuItem[] = [
   { key: "dashboard", title: "داشبورد", path: "/dashboard", icon: <DashboardIcon /> },
   { key: "categories", title: "دسته‌بندی‌ها", path: "/categories", icon: <CategoryIcon /> },
   { key: "products", title: "محصولات", path: "/products", icon: <InventoryIcon /> },
+  { key: "inventory", title: "موجودی", path: "/inventory", icon: <InventoryIcon /> },
   { key: "purchases", title: "خرید", path: "/purchases", icon: <ShoppingCartIcon /> },
   { key: "sales", title: "فروش", path: "/sales", icon: <PointOfSaleIcon /> },
   { key: "customers", title: "مشتریان", path: "/customers", icon: <PeopleIcon /> },

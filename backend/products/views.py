@@ -240,12 +240,18 @@ class InventoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
 
-        return Inventory.objects.filter(
+        queryset = Inventory.objects.filter(
             store__store_users__user=self.request.user
         ).select_related(
             "product",
             "store",
         )
+
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+
+        return queryset
 
     def perform_create(self, serializer):
 
@@ -306,6 +312,10 @@ class InventoryTransactionViewSet(
             .order_by("-id")
         )
 
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+
         product_id = (
             self.request.query_params.get(
                 "product"
@@ -336,7 +346,7 @@ class InventoryReportViewSet(
 
         queryset = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store"
@@ -951,7 +961,7 @@ class LowStockReportView(
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store"
@@ -1018,7 +1028,7 @@ class OutOfStockReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store"
@@ -1168,7 +1178,7 @@ class InventoryValueReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store",
@@ -1303,7 +1313,7 @@ class SlowMovingInventoryReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store",
@@ -1413,7 +1423,7 @@ class InventoryPotentialProfitReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store",
@@ -1524,7 +1534,7 @@ class StoreInventorySummaryView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "store",
                 "product",
@@ -1647,7 +1657,7 @@ class InventoryReportView(APIView):
 
         queryset = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store",
@@ -2168,7 +2178,7 @@ class SupplierBalanceView(APIView):
         """
 
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
             id=supplier_id,
         )
 
@@ -2268,7 +2278,7 @@ class SupplierLedgerView(APIView):
         """
 
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
             id=supplier_id,
         )
 
@@ -2530,7 +2540,7 @@ class SupplierPurchaseReportView(APIView):
         # Query خریدها
         # -------------------------
 
-        purchases = Purchase.objects.filter(store_id__in=user_store_ids(request.user))
+        purchases = Purchase.objects.filter(store_id__in=user_store_ids(self.request.user))
 
         if supplier_id:
             purchases = purchases.filter(
@@ -3404,7 +3414,7 @@ class SupplierSettleView(APIView):
         supplier_id
     ):
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
             id=supplier_id,
         )
 

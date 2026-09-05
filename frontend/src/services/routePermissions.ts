@@ -22,6 +22,7 @@ export type AppRouteKey =
   | "dashboard"
   | "categories"
   | "products"
+  | "inventory"
   | "purchases"
   | "sales"
   | "customers"
@@ -32,6 +33,7 @@ export const ROUTE_ROLES: Record<AppRouteKey, readonly StoreRole[]> = {
   dashboard: ALL_ROLES,
   categories: ALL_ROLES,
   products: ALL_ROLES,
+  inventory: ALL_ROLES,
   purchases: [ROLE.manager, ROLE.warehouse],
   sales: [ROLE.manager, ROLE.seller, ROLE.cashier],
   customers: [ROLE.manager, ROLE.seller, ROLE.cashier],
