@@ -34,14 +34,44 @@ class CartPermission(BasePermission):
 
     message = "شما به این فروشگاه دسترسی ندارید."
 
-    def has_permission(self, request, view):
+    ALLOWED_ROLES = {"manager", "seller", "cashier"}
 
-        return (
-            request.user
-            and request.user.is_authenticated
-        )
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+
+        # Cart endpoints are sales operations; warehouse users must not
+        # be able to create/read another employee's sales carts.
+        if request.method == "GET":
+            return UserStore.objects.filter(
+                user=request.user,
+                role__in=self.ALLOWED_ROLES,
+            ).exists()
+
+        store_id = request.data.get("store")
+        if store_id is not None:
+            return UserStore.objects.filter(
+                user=request.user,
+                store_id=store_id,
+                role__in=self.ALLOWED_ROLES,
+            ).exists()
+
+        # Nested CartItem routes are resolved by the parent cart.
+        cart_id = getattr(view, "kwargs", {}).get("cart_pk")
+        if cart_id is not None:
+            return UserStore.objects.filter(
+                user=request.user,
+                role__in=self.ALLOWED_ROLES,
+                store__carts__id=cart_id,
+            ).exists()
+
+        return False
 
     def has_object_permission(self, request, view, obj):
+        if request.user.is_superuser:
+            return True
 
         if isinstance(obj, Cart):
             store = obj.store
@@ -51,6 +81,7 @@ class CartPermission(BasePermission):
         return UserStore.objects.filter(
             user=request.user,
             store=store,
+            role__in=self.ALLOWED_ROLES,
         ).exists()
         
 

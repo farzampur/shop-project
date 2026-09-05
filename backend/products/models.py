@@ -212,10 +212,6 @@ class InventoryTransaction(models.Model):
     )
 
 
-from django.db import models
-from core.models import Store
-
-
 class Supplier(models.Model):
 
     store = models.ForeignKey(

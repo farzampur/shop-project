@@ -120,9 +120,20 @@ class ProductSerializer(serializers.ModelSerializer):
                 "بارکد باید یک EAN-13 معتبر باشد."
             )
 
-        queryset = Product.objects.filter(
-            barcode=value
-        )
+        store_id = None
+        if self.instance:
+            store_id = self.instance.category.store_id
+        else:
+            category = self.initial_data.get("category")
+            if category:
+                try:
+                    store_id = Category.objects.only("store_id").get(pk=category).store_id
+                except Category.DoesNotExist:
+                    store_id = None
+
+        queryset = Product.objects.filter(barcode=value)
+        if store_id:
+            queryset = queryset.filter(category__store_id=store_id)
 
         if self.instance:
             queryset = queryset.exclude(
@@ -139,6 +150,13 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class InventorySerializer(serializers.ModelSerializer):
+
+    def validate(self, attrs):
+        product = attrs.get("product", getattr(self.instance, "product", None))
+        store = attrs.get("store", getattr(self.instance, "store", None))
+        if product and store and product.category.store_id != store.id:
+            raise serializers.ValidationError({"product": "کالا متعلق به این فروشگاه نیست."})
+        return attrs
 
     product_name = serializers.CharField(
         source="product.name",

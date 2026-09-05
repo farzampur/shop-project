@@ -22,8 +22,7 @@ class Customer(models.Model):
     )
 
     mobile = models.CharField(
-        max_length=20,
-        unique=True
+        max_length=20
     )
 
     address = models.TextField(
@@ -34,14 +33,15 @@ class Customer(models.Model):
         auto_now_add=True
     )
     class Meta:
-
-        ordering = [
-            "-id"
-        ]
-
+        ordering = ["-id"]
         verbose_name = "مشتری"
-
         verbose_name_plural = "مشتریان"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "mobile"],
+                name="unique_customer_mobile_per_store",
+            )
+        ]
     def __str__(self):
 
         return (
@@ -283,6 +283,13 @@ class OrderItem(models.Model):
         verbose_name="قیمت واحد"
     )
 
+    purchase_price = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name="قیمت خرید هنگام فروش"
+    )
+
     discount_percent = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -329,6 +336,29 @@ class OrderItem(models.Model):
         verbose_name = "آیتم سفارش"
         verbose_name_plural = "آیتم‌های سفارش"
 
+
+
+class Payment(models.Model):
+    """Single settlement allocation for an order."""
+    METHOD_CHOICES = [
+        ("cash", "نقدی"),
+        ("card", "کارتخوان"),
+        ("credit", "حسابی"),
+    ]
+
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name="payments"
+    )
+    method = models.CharField(max_length=10, choices=METHOD_CHOICES)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    cashbox = models.ForeignKey(
+        "sales.CashBox", on_delete=models.PROTECT,
+        related_name="payments", null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
 
 
 class Expense(models.Model):
@@ -412,6 +442,12 @@ class CustomerTransaction(models.Model):
         Customer,
         on_delete=models.CASCADE,
         related_name="transactions"
+    )
+
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="customer_transactions",
     )
 
     transaction_type = models.CharField(

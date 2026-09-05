@@ -1,6 +1,7 @@
 from rest_framework import serializers
+from decimal import Decimal
 
-from .models import Cart, CartItem, Order, OrderItem, Product
+from .models import Cart, CartItem, Order, OrderItem, Product, Payment
 from .models import Expense, Customer, CustomerTransaction
 from .models import CashBox, CashBoxTransaction, CashTransfer
 
@@ -59,6 +60,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             "product_name",
             "quantity",
             "unit_price",
+            "purchase_price",
             "discount_percent",
             "discount_amount",
             "final_unit_price",
@@ -123,6 +125,7 @@ class CartSerializer(serializers.ModelSerializer):
             "username",
             "store",
             "store_name",
+            "store",
             "items",
             "total_before_discount",
             "total_discount",
@@ -144,6 +147,11 @@ class CartSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def validate_customer(self, value):
+        if self.instance and value and value.store_id != self.instance.store_id:
+            raise serializers.ValidationError("مشتری متعلق به فروشگاه این سبد نیست.")
+        return value
 
     def get_total_before_discount(self, obj):
         return sum(
@@ -255,8 +263,30 @@ class CartItemUpdateSerializer(serializers.ModelSerializer):
 
 
         
+class CheckoutPaymentSerializer(serializers.Serializer):
+    method = serializers.ChoiceField(choices=["cash", "card", "credit"])
+    amount = serializers.DecimalField(max_digits=15, decimal_places=2, min_value=Decimal("0.01"))
+    cashbox_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        method = attrs["method"]
+        cashbox_id = attrs.get("cashbox_id")
+        if method in {"cash", "card"} and not cashbox_id:
+            raise serializers.ValidationError({"cashbox_id": "برای پرداخت نقدی/کارتخوان صندوق الزامی است."})
+        if method == "credit" and cashbox_id:
+            raise serializers.ValidationError({"cashbox_id": "برای پرداخت حسابی صندوق ارسال نکنید."})
+        return attrs
+
+
 class CheckoutSerializer(serializers.Serializer):
     cart_id = serializers.IntegerField()
+    payments = CheckoutPaymentSerializer(many=True, required=False, allow_empty=True)
+
+    def validate(self, attrs):
+        payments = attrs.get("payments", [])
+        if any(p["amount"] <= 0 for p in payments):
+            raise serializers.ValidationError({"payments": "مبلغ پرداخت باید بیشتر از صفر باشد."})
+        return attrs
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -275,6 +305,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
         ]
 
 
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ["id", "method", "amount", "cashbox", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+
 class OrderSerializer(serializers.ModelSerializer):
 
     created_at = JalaliDateTimeField(
@@ -282,6 +319,11 @@ class OrderSerializer(serializers.ModelSerializer):
     )
     
     items = OrderItemSerializer(
+        many=True,
+        read_only=True
+    )
+
+    payments = PaymentSerializer(
         many=True,
         read_only=True
     )
@@ -297,6 +339,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_price",
             "created_at",
             "items",
+            "payments",
             "customer",
             "customer_name",
         ]
@@ -315,18 +358,29 @@ class OrderSerializer(serializers.ModelSerializer):
 
         
 class OrderStatusSerializer(serializers.Serializer):
-
     status = serializers.ChoiceField(
-        choices=[
-            "confirmed",
-            "cancelled",
-            "delivered",
-        ]
-    )        
+        choices=["confirmed", "cancelled"]
+    )
+
+
+class OrderPaySerializer(serializers.Serializer):
+    payments = CheckoutPaymentSerializer(many=True, allow_empty=False)        
     
 class ExpenseSerializer(
     serializers.ModelSerializer
 ):
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("مبلغ هزینه باید بیشتر از صفر باشد.")
+        return value
+
+    def validate(self, attrs):
+        store = attrs.get("store", getattr(self.instance, "store", None))
+        cashbox = attrs.get("cashbox", getattr(self.instance, "cashbox", None))
+        if store and cashbox and cashbox.store_id != store.id:
+            raise serializers.ValidationError({"cashbox": "صندوق متعلق به فروشگاه انتخاب‌شده نیست."})
+        return attrs
 
     username = serializers.CharField(
         source="user.username",
@@ -373,6 +427,11 @@ class CustomerSerializer(
     serializers.ModelSerializer
 ):
 
+    def validate_store(self, value):
+        if self.instance and value.id != self.instance.store_id:
+            raise serializers.ValidationError("انتقال مشتری بین فروشگاه‌ها مجاز نیست.")
+        return value
+
     class Meta:
 
         model = Customer
@@ -383,6 +442,16 @@ class CustomerSerializer(
 class CustomerTransactionSerializer(
     serializers.ModelSerializer
 ):
+
+    def validate(self, attrs):
+        customer = attrs.get("customer", getattr(self.instance, "customer", None))
+        store = getattr(self.instance, "store", None)
+        amount = attrs.get("amount", getattr(self.instance, "amount", None))
+        if amount is not None and amount <= 0:
+            raise serializers.ValidationError({"amount": "مبلغ تراکنش باید بیشتر از صفر باشد."})
+        if store and customer and customer.store_id != store.id:
+            raise serializers.ValidationError({"customer": "مشتری متعلق به فروشگاه این تراکنش نیست."})
+        return attrs
 
     created_at = JalaliDateTimeField(
         with_time=True
@@ -395,6 +464,7 @@ class CustomerTransactionSerializer(
         fields = [
             "id",
             "customer",
+            "store",
             "transaction_type",
             "amount",
             "description",
@@ -404,6 +474,7 @@ class CustomerTransactionSerializer(
 
         read_only_fields = [
             "id",
+            "store",
             "created_at",
         ]
 
@@ -411,6 +482,11 @@ class CustomerTransactionSerializer(
 class CashBoxSerializer(
     serializers.ModelSerializer
 ):
+
+    def validate_store(self, value):
+        if self.instance and value.id != self.instance.store_id:
+            raise serializers.ValidationError("انتقال صندوق بین فروشگاه‌ها مجاز نیست.")
+        return value
 
     created_at = JalaliDateTimeField(
         with_time=True
@@ -440,6 +516,11 @@ class CashBoxTransactionSerializer(
     serializers.ModelSerializer
 ):
 
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("مبلغ باید بیشتر از صفر باشد.")
+        return value
+
     created_at = JalaliDateTimeField(
         with_time=True
     )
@@ -466,6 +547,11 @@ class CashBoxTransactionSerializer(
 class CashTransferSerializer(
     serializers.ModelSerializer
 ):
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("مبلغ انتقال باید بیشتر از صفر باشد.")
+        return value
 
     created_at = JalaliDateTimeField(
         with_time=True

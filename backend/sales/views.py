@@ -13,6 +13,8 @@ from rest_framework.decorators import action
 from decimal import Decimal
 
 from accounts.models import UserStore
+from accounts.permissions import StoreRolePermission
+from accounts.store_access import has_store_access, require_store_access, user_store_ids
 from django.utils import timezone
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
 from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer
@@ -30,8 +32,10 @@ from .serializers import (
     CartItemCreateSerializer,
     CartItemUpdateSerializer,
     CheckoutSerializer,
+    PaymentSerializer,
     OrderSerializer,
     OrderStatusSerializer,
+    OrderPaySerializer,
     ExpenseSerializer,
     CustomerSerializer,
     CustomerTransactionSerializer,
@@ -69,20 +73,16 @@ class CartViewSet(viewsets.ModelViewSet):
                 "فروشگاه مشخص نشده است."
             )
 
-        has_access = UserStore.objects.filter(
-            user=self.request.user,
-            store_id=store_id
-        ).exists()
+        if not has_store_access(
+            self.request.user, store_id,
+            {"manager", "seller", "cashier"},
+        ):
+            raise PermissionDenied("شما مجوز فروش در این فروشگاه را ندارید.")
 
-        if not has_access:
-            raise PermissionDenied(
-                "شما به این فروشگاه دسترسی ندارید."
-            )
-
-        serializer.save(
-            user=self.request.user,
-            store_id=store_id
-        )              
+        customer = serializer.validated_data.get("customer")
+        if customer and customer.store_id != int(store_id):
+            raise ValidationError("مشتری متعلق به این فروشگاه نیست.")
+        serializer.save(user=self.request.user, store_id=store_id)              
 
 class CartItemViewSet(viewsets.ModelViewSet):
 
@@ -147,9 +147,8 @@ class CartItemViewSet(viewsets.ModelViewSet):
             product = (
                 Product.objects
                 .filter(
-                    barcode=str(
-                        barcode
-                    ).strip(),
+                    barcode=str(barcode).strip(),
+                    category__store_id=cart.store_id,
                     is_active=True,
                 )
                 .first()
@@ -295,14 +294,17 @@ class CheckoutView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         cart_id = serializer.validated_data["cart_id"]
+        payments = serializer.validated_data.get("payments", [])
 
         try:
-            cart = Cart.objects.get(
-                id=cart_id,
-                user=request.user
-            )
-
-            order = CheckoutService.checkout(cart)
+            cart = Cart.objects.get(id=cart_id, user=request.user)
+            if not has_store_access(request.user, cart.store_id, {"manager", "seller", "cashier"}):
+                raise PermissionDenied("شما مجوز فروش در این فروشگاه را ندارید.")
+            if any(p["method"] in {"cash", "card"} for p in payments) and not has_store_access(
+                request.user, cart.store_id, {"manager", "cashier"}
+            ):
+                raise PermissionDenied("ثبت دریافت نقدی/کارتخوان فقط برای صندوقدار یا مدیر مجاز است.")
+            order = CheckoutService.checkout(cart, payments)
 
         except Cart.DoesNotExist:
             return Response(
@@ -333,7 +335,7 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
 
         return Order.objects.filter(
-            user=self.request.user
+            store_id__in=user_store_ids(self.request.user)
         ).prefetch_related(
             "items"
         ).select_related(
@@ -346,6 +348,8 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
     def change_status(self, request, pk=None):
 
         order = self.get_object()
+        if not has_store_access(request.user, order.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز تغییر وضعیت این سفارش را ندارید.")
         serializer = OrderStatusSerializer(
             data=request.data
         )
@@ -366,6 +370,17 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
             }
         )       
        
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        order = self.get_object()
+        if not has_store_access(request.user, order.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز دریافت وجه این سفارش را ندارید.")
+        serializer = OrderPaySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order = OrderService.settle(order, serializer.validated_data["payments"])
+        return Response({"id": order.id, "status": order.status})
+
+
 class SalesReportViewSet(viewsets.ViewSet):
 
     permission_classes = [
@@ -375,7 +390,7 @@ class SalesReportViewSet(viewsets.ViewSet):
     def list(self, request):
 
         queryset = Order.objects.filter(
-            user=request.user
+            store_id__in=user_store_ids(request.user)
         ).annotate(
             day=TruncDate("created_at")
         ).values(
@@ -397,7 +412,7 @@ class SalesReportViewSet(viewsets.ViewSet):
         queryset = (
             Order.objects
             .filter(
-                user=request.user
+                store_id__in=user_store_ids(request.user)
             )
             .annotate(
                 month=TruncMonth(
@@ -427,6 +442,7 @@ class SalesReportViewSet(viewsets.ViewSet):
 
         queryset = (
             OrderItem.objects
+            .filter(order__store_id__in=user_store_ids(request.user))
             .values(
                 "product_id",
                 "product_name"
@@ -453,14 +469,14 @@ class SalesReportViewSet(viewsets.ViewSet):
 
         total_sales = Decimal("0")
         total_cost = Decimal("0")
-        items = OrderItem.objects.all()
+        items = OrderItem.objects.filter(order__store_id__in=user_store_ids(request.user)).select_related("product")
 
         for item in items:
             sale_amount = item.total_price
 
             cost_amount = (
                 item.quantity *
-                item.product.purchase_price
+                item.purchase_price
             )
             total_sales += sale_amount
             total_cost += cost_amount
@@ -483,7 +499,7 @@ class SalesReportViewSet(viewsets.ViewSet):
 
         expense_total = (
             Expense.objects.filter(
-                user=request.user
+                store_id__in=user_store_ids(request.user)
             ).aggregate(
                 total=Sum("amount")
             )["total"]
@@ -492,7 +508,7 @@ class SalesReportViewSet(viewsets.ViewSet):
 
         total_sales = (
             Order.objects.filter(
-                user=request.user
+                store_id__in=user_store_ids(request.user)
             ).aggregate(
                 total=Sum("total_price")
             )["total"]
@@ -518,11 +534,13 @@ class DashboardView(APIView):
     def get(self, request):
 
         today = timezone.now().date()
+        store_ids = user_store_ids(request.user)
         today_orders = Order.objects.filter(
-            created_at__date=today
+            store_id__in=store_ids,
+            created_at__date=today,
         )
-
         month_orders = Order.objects.filter(
+            store_id__in=store_ids,
             created_at__year=today.year,
             created_at__month=today.month,
         )
@@ -541,28 +559,26 @@ class DashboardView(APIView):
             or 0
         )
 
-        total_products = Product.objects.count()
+        total_products = Product.objects.filter(category__store_id__in=store_ids).count()
         total_inventory = (
-            Inventory.objects.aggregate(
+            Inventory.objects.filter(store_id__in=store_ids).aggregate(
                 total=Sum("quantity")
             )["total"]
             or 0
         )
 
         low_stock_products = (
-            Inventory.objects.filter(
-                quantity__lt=10
-            ).count()
+            Inventory.objects.filter(store_id__in=store_ids, quantity__lt=10).count()
         )
         
         total_sales_amount = Decimal("0")
         total_cost_amount = Decimal("0")
 
-        for item in OrderItem.objects.all():
+        for item in OrderItem.objects.filter(order__store_id__in=store_ids).select_related("product"):
             total_sales_amount += item.total_price
             total_cost_amount += (
                 item.quantity *
-                item.product.purchase_price
+                item.purchase_price
             )
 
         total_profit = (
@@ -572,7 +588,7 @@ class DashboardView(APIView):
 
         expense_total = (
             Expense.objects.filter(
-                user=request.user
+                store_id__in=user_store_ids(request.user)
             ).aggregate(
                 total=Sum("amount")
             )["total"]
@@ -601,16 +617,32 @@ class DashboardView(APIView):
 
 class ExpenseViewSet(viewsets.ModelViewSet):
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = ExpenseSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
+
+    def update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def partial_update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
 
     def get_queryset(self):
 
         return Expense.objects.filter(
-            user=self.request.user
+            store_id__in=user_store_ids(self.request.user)
         )
 
     @transaction.atomic
@@ -622,11 +654,12 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         ثبت هزینه و کسر مبلغ از صندوق
         """
 
-        expense = serializer.save(
-            user=self.request.user
-        )
-
-        cashbox = expense.cashbox
+        expense = serializer.save(user=self.request.user)
+        if not has_store_access(self.request.user, expense.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز ثبت هزینه در این فروشگاه را ندارید.")
+        if expense.cashbox.store_id != expense.store_id:
+            raise ValidationError("صندوق متعلق به این فروشگاه نیست.")
+        cashbox = CashBox.objects.select_for_update().get(pk=expense.cashbox_id)
 
         if cashbox.balance < expense.amount:
 
@@ -654,13 +687,22 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         )
         
 class CustomerViewSet(viewsets.ModelViewSet):
+    allowed_roles_by_method = {
+        "GET": {"manager", "seller", "cashier"},
+        "POST": {"manager", "seller", "cashier"},
+        "PUT": {"manager", "seller", "cashier"},
+        "PATCH": {"manager", "seller", "cashier"},
+        "DELETE": {"manager"},
+    }
+
     serializer_class = CustomerSerializer
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
     def get_queryset(self):
 
-        return Customer.objects.all()        
+        return Customer.objects.filter(
+            store_id__in=user_store_ids(self.request.user)
+        )
         
 class CustomerReportView(APIView):
     permission_classes = [
@@ -671,6 +713,7 @@ class CustomerReportView(APIView):
 
         customers = (
             Customer.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .annotate(
                 order_count=Count(
                     "orders"
@@ -728,62 +771,67 @@ class CustomerTransactionViewSet(viewsets.ModelViewSet):
     یک دریافت در صندوق نیز ثبت می‌شود.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = (
         CustomerTransactionSerializer
     )
 
     permission_classes = [
-        IsAuthenticated
+        IsAuthenticated,
+        StoreRolePermission
     ]
 
-    queryset = (
-        CustomerTransaction.objects
-        .select_related("customer")
-        .order_by("-id")
-    )
+    def update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
 
-    def perform_create(
-        self,
-        serializer
-    ):
-        """
-        ثبت تراکنش مشتری
-        """
+    def partial_update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
 
-        customer_tx = serializer.save()
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
 
-        if (
-            customer_tx.transaction_type
-            == "payment"
-        ):
+    def get_queryset(self):
+        return (
+            CustomerTransaction.objects
+            .filter(store_id__in=user_store_ids(self.request.user))
+            .select_related("customer", "store")
+            .order_by("-id")
+        )
 
-            cashbox = (
-                CashBox.objects.first()
+    @transaction.atomic
+    def perform_create(self, serializer):
+        customer = serializer.validated_data["customer"]
+        if not has_store_access(self.request.user, customer.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز ثبت تراکنش مشتری را ندارید.")
+        tx_type = serializer.validated_data["transaction_type"]
+        if tx_type == "sale" and not has_store_access(self.request.user, customer.store_id, {"manager"}):
+            raise PermissionDenied("ثبت دستی بدهی فروش فقط برای مدیر فروشگاه مجاز است.")
+        if tx_type == "payment":
+            cashbox_id = self.request.data.get("cashbox")
+            if not cashbox_id:
+                raise ValidationError({"cashbox": "برای دریافت وجه صندوق الزامی است."})
+            cashbox = CashBox.objects.select_for_update().filter(
+                pk=cashbox_id, store_id=customer.store_id
+            ).first()
+            if not cashbox:
+                raise ValidationError({"cashbox": "صندوق متعلق به این فروشگاه نیست."})
+            customer_tx = serializer.save(store=customer.store)
+            cashbox.balance += customer_tx.amount
+            cashbox.save(update_fields=["balance", "updated_at"])
+            CashBoxTransaction.objects.create(
+                cashbox=cashbox, transaction_type="receive",
+                amount=customer_tx.amount, reference_id=customer_tx.id,
+                description=f"دریافت از مشتری {customer_tx.customer}",
             )
-
-            if cashbox:
-
-                cashbox.balance += (
-                    customer_tx.amount
-                )
-
-                cashbox.save(
-                    update_fields=[
-                        "balance",
-                        "updated_at",
-                    ]
-                )
-
-                CashBoxTransaction.objects.create(
-                    cashbox=cashbox,
-                    transaction_type="receive",
-                    amount=customer_tx.amount,
-                    reference_id=customer_tx.id,
-                    description=(
-                        f"دریافت از مشتری "
-                        f"{customer_tx.customer}"
-                    )
-                )
+        else:
+            serializer.save(store=customer.store)
 
 class CustomerBalanceView(APIView):
 
@@ -793,8 +841,9 @@ class CustomerBalanceView(APIView):
 
     def get(self, request, customer_id):
 
-        customer = Customer.objects.get(
-            id=customer_id
+        customer = get_object_or_404(
+            Customer.objects.filter(store_id__in=user_store_ids(request.user)),
+            id=customer_id,
         )
 
         sales_amount = (
@@ -851,7 +900,7 @@ class DebtorCustomersView(APIView):
     def get(self, request):
 
         result = []
-        for customer in Customer.objects.all():
+        for customer in Customer.objects.filter(store_id__in=user_store_ids(request.user)):
 
             sales_amount = (
                 CustomerTransaction.objects
@@ -909,7 +958,7 @@ class CreditorCustomersView(APIView):
 
         result = []
 
-        for customer in Customer.objects.all():
+        for customer in Customer.objects.filter(store_id__in=user_store_ids(request.user)):
             sales_amount = (
                 CustomerTransaction.objects
                 .filter(
@@ -960,8 +1009,9 @@ class CustomerLedgerView(APIView):
 
     def get(self, request, customer_id):
 
-        customer = Customer.objects.get(
-            id=customer_id
+        customer = get_object_or_404(
+            Customer.objects.filter(store_id__in=user_store_ids(request.user)),
+            id=customer_id,
         )
 
         transactions = (
@@ -1011,19 +1061,30 @@ class CashBoxViewSet(
     مدیریت صندوق‌ها
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = (
         CashBoxSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, StoreRolePermission]
 
-    queryset = (
-        CashBox.objects
-        .select_related("store")
-        .order_by("name")
-    )
+
+    def perform_destroy(self, instance):
+        if instance.balance != 0 or instance.transactions.exists() or instance.payments.exists():
+            raise ValidationError("صندوق دارای سابقه مالی است و قابل حذف نیست.")
+        instance.delete()
+
+    def get_queryset(self):
+        return CashBox.objects.filter(
+            store_id__in=user_store_ids(self.request.user)
+        ).select_related("store").order_by("name")
 
 
 class CashBoxTransactionViewSet(
@@ -1038,19 +1099,34 @@ class CashBoxTransactionViewSet(
     payment  => پرداخت
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = (
         CashBoxTransactionSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, StoreRolePermission]
 
-    queryset = (
-        CashBoxTransaction.objects
-        .select_related("cashbox")
-        .order_by("-id")
-    )
+
+    def update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def partial_update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def get_queryset(self):
+        return CashBoxTransaction.objects.filter(
+            cashbox__store_id__in=user_store_ids(self.request.user)
+        ).select_related("cashbox").order_by("-id")
 
     @transaction.atomic
     def perform_create(
@@ -1062,9 +1138,10 @@ class CashBoxTransactionViewSet(
         و بروزرسانی موجودی
         """
 
-        cashbox = serializer.validated_data[
-            "cashbox"
-        ]
+        cashbox_id = serializer.validated_data["cashbox"].id
+        cashbox = CashBox.objects.select_for_update().get(pk=cashbox_id)
+        if not has_store_access(self.request.user, cashbox.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز عملیات صندوق را ندارید.")
 
         transaction_type = (
             serializer.validated_data[
@@ -1135,6 +1212,7 @@ class FinancialReportView(
         receipts = (
             CashBoxTransaction.objects
             .filter(
+                cashbox__store_id__in=user_store_ids(request.user),
                 transaction_type__in=[
                     "receive",
                     "deposit",
@@ -1149,6 +1227,7 @@ class FinancialReportView(
         payments = (
             CashBoxTransaction.objects
             .filter(
+                cashbox__store_id__in=user_store_ids(request.user),
                 transaction_type__in=[
                     "payment",
                     "withdraw",
@@ -1189,6 +1268,7 @@ class CashLedgerView(
 
         transactions = (
             CashBoxTransaction.objects
+            .filter(cashbox__store_id__in=user_store_ids(request.user))
             .select_related("cashbox")
             .order_by("-id")
         )
@@ -1240,6 +1320,7 @@ class CashBoxBalanceReportView(
 
         cashboxes = (
             CashBox.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related("store")
             .annotate(
                 transaction_count=Count(
@@ -1350,8 +1431,8 @@ class DailyCashFlowReportView(
             "end_date"
         )
 
-        queryset = (
-            CashBoxTransaction.objects.all()
+        queryset = CashBoxTransaction.objects.filter(
+            cashbox__store_id__in=user_store_ids(request.user)
         )
 
         # اعتبارسنجی تاریخ شروع
@@ -1545,46 +1626,53 @@ class CashTransferViewSet(
     انتقال وجه بین صندوق‌ها
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = (
         CashTransferSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated, StoreRolePermission]
 
-    queryset = (
-        CashTransfer.objects
-        .select_related(
-            "from_cashbox",
-            "to_cashbox",
+    def update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def partial_update(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+
+    def get_queryset(self):
+        return (
+            CashTransfer.objects
+            .filter(from_cashbox__store_id__in=user_store_ids(self.request.user))
+            .select_related("from_cashbox", "to_cashbox")
+            .order_by("-id")
         )
-        .order_by("-id")
-    )
 
     @transaction.atomic
-    def perform_create(
-        self,
-        serializer
-    ):
+    def perform_create(self, serializer):
+        from_cashbox = serializer.validated_data["from_cashbox"]
+        to_cashbox = serializer.validated_data["to_cashbox"]
 
-        from_cashbox = (
-            serializer.validated_data[
-                "from_cashbox"
-            ]
-        )
+        amount = serializer.validated_data["amount"]
+        if amount <= 0:
+            raise ValidationError("مبلغ انتقال باید بیشتر از صفر باشد.")
 
-        to_cashbox = (
-            serializer.validated_data[
-                "to_cashbox"
-            ]
-        )
+        if from_cashbox.store_id != to_cashbox.store_id:
+            raise ValidationError("انتقال بین دو فروشگاه مجاز نیست.")
+        if not has_store_access(self.request.user, from_cashbox.store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز انتقال صندوق را ندارید.")
 
-        amount = (
-            serializer.validated_data[
-                "amount"
-            ]
-        )
+        from_cashbox = CashBox.objects.select_for_update().get(pk=from_cashbox.pk)
+        to_cashbox = CashBox.objects.select_for_update().get(pk=to_cashbox.pk)
 
         if (
             from_cashbox.id ==
@@ -1679,7 +1767,7 @@ class InvoicePDFView(APIView):
                 "user",
             ),
             id=order_id,
-            user=request.user,
+            store_id__in=user_store_ids(request.user),
         )
 
         pdf_buffer = (
@@ -1719,7 +1807,7 @@ class ThermalReceiptPDFView(APIView):
                 "customer",
             ),
             id=order_id,
-            user=request.user,
+            store_id__in=user_store_ids(request.user),
         )
 
         pdf_buffer = (

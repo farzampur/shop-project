@@ -52,12 +52,19 @@ from .serializers import (
     SupplierPaymentSerializer,    
     PurchaseReturnSerializer,
 )
-from .permissions import (
-    StoreRolePermission,
-    InventoryPermission,
-)
+from accounts.store_access import has_store_access, user_store_ids
+from accounts.permissions import StoreRolePermission
+from .permissions import InventoryPermission
 
 class CategoryViewSet(viewsets.ModelViewSet):
+
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse", "seller", "cashier"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
 
     serializer_class = CategorySerializer
 
@@ -129,6 +136,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
             )
 
 class ProductViewSet(viewsets.ModelViewSet):
+
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse", "seller", "cashier"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
 
     serializer_class = ProductSerializer
 
@@ -283,6 +298,7 @@ class InventoryTransactionViewSet(
 
         queryset = (
             InventoryTransaction.objects
+            .filter(store_id__in=user_store_ids(self.request.user))
             .select_related(
                 "product",
                 "store"
@@ -320,6 +336,7 @@ class InventoryReportViewSet(
 
         queryset = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store"
@@ -345,13 +362,20 @@ class SupplierViewSet(
     viewsets.ModelViewSet
 ):
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
     serializer_class = (
         SupplierSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated,
-    ]
+
 
     def get_queryset(self):
 
@@ -480,11 +504,18 @@ class PurchaseViewSet(
     مدیریت خرید از تأمین‌کنندگان.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
     serializer_class = PurchaseSerializer
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+
 
     queryset = (
         Purchase.objects
@@ -667,6 +698,86 @@ class PurchaseViewSet(
 
         instance.delete()
 
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="receive"
+    )
+    @transaction.atomic
+    def receive_purchase(self, request, pk=None):
+        """
+        دریافت نهایی خرید.
+        موجودی کالاها افزایش می‌یابد
+        و بدهی تأمین‌کننده ثبت می‌شود.
+        """
+
+        purchase = self.get_object()
+
+        # -------------------------
+        # بررسی دریافت قبلی
+        # -------------------------
+
+        if purchase.received:
+            return Response(
+                {
+                    "detail": (
+                        "این خرید قبلاً دریافت شده است."
+                    )
+                },
+                status=400
+            )
+
+        # -------------------------
+        # بررسی دسترسی فروشگاه
+        # -------------------------
+
+        has_access = (
+            request.user.user_stores
+            .filter(
+                store=purchase.store
+            )
+            .exists()
+        )
+
+        if not has_access:
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
+        # -------------------------
+        # دریافت خرید
+        # -------------------------
+
+        purchase = PurchaseService.receive_purchase(
+            purchase
+        )
+
+        # -------------------------
+        # ایجاد / بروزرسانی بدهی
+        # -------------------------
+
+        if purchase.total_amount > 0:
+            self._sync_supplier_debt(
+                purchase
+            )
+
+        # -------------------------
+        # پاسخ
+        # -------------------------
+
+        serializer = self.get_serializer(
+            purchase
+        )
+
+        return Response(
+            serializer.data,
+            status=200
+        )
+
     def _sync_supplier_debt(
         self,
         purchase
@@ -722,10 +833,19 @@ class PurchaseItemViewSet(
     viewsets.ModelViewSet
 ):
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager", "warehouse"},
+    }
+
     serializer_class = PurchaseItemSerializer
 
     permission_classes = [
-        IsAuthenticated
+        IsAuthenticated,
+        StoreRolePermission,
     ]
 
     def get_queryset(self):
@@ -773,14 +893,10 @@ class PurchaseItemViewSet(
             )
 
         # بررسی دسترسی کاربر به فروشگاه خرید
-        has_access = (
-            purchase.store
-            .store_users
-            .filter(
-                user=self.request.user
-            )
-            .exists()
-        )
+        has_access = self.request.user.user_stores.filter(
+            store=purchase.store,
+            role__in={"manager", "warehouse"},
+        ).exists()
 
         if not has_access:
 
@@ -835,6 +951,7 @@ class LowStockReportView(
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store"
@@ -901,6 +1018,7 @@ class OutOfStockReportView(APIView):
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store"
@@ -1050,6 +1168,7 @@ class InventoryValueReportView(APIView):
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store",
@@ -1184,6 +1303,7 @@ class SlowMovingInventoryReportView(APIView):
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store",
@@ -1293,6 +1413,7 @@ class InventoryPotentialProfitReportView(APIView):
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store",
@@ -1403,6 +1524,7 @@ class StoreInventorySummaryView(APIView):
 
         inventories = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "store",
                 "product",
@@ -1525,6 +1647,7 @@ class InventoryReportView(APIView):
 
         queryset = (
             Inventory.objects
+            .filter(store_id__in=user_store_ids(request.user))
             .select_related(
                 "product",
                 "store",
@@ -1793,23 +1916,36 @@ class SupplierTransactionViewSet(
     مدیریت تراکنش‌های تأمین‌کننده.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
     serializer_class = (
         SupplierTransactionSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated
-    ]
 
-    queryset = (
-        SupplierTransaction.objects
-        .select_related("supplier")
-        .order_by(
-            "-created_at",
-            "-id"
+
+    def get_queryset(self):
+        return (
+            SupplierTransaction.objects
+            .filter(supplier__store_id__in=user_store_ids(self.request.user))
+            .select_related("supplier")
+            .order_by("-created_at", "-id")
         )
-    )
 
+
+    def perform_create(self, serializer):
+        supplier = serializer.validated_data["supplier"]
+        if not has_store_access(self.request.user, supplier.store_id, {"manager", "warehouse"}):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("شما مجوز ثبت تراکنش تأمین‌کننده را ندارید.")
+        serializer.save()
 
 class SupplierPaymentViewSet(
     viewsets.ModelViewSet
@@ -1824,27 +1960,33 @@ class SupplierPaymentViewSet(
     4- موجودی صندوق کاهش پیدا می‌کند.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     serializer_class = (
         SupplierPaymentSerializer
     )
 
     permission_classes = [
-        IsAuthenticated
+        IsAuthenticated,
+        StoreRolePermission
     ]
 
-    queryset = (
-        SupplierTransaction.objects
-        .filter(
-            transaction_type="payment"
+    def get_queryset(self):
+        return (
+            SupplierTransaction.objects
+            .filter(
+                transaction_type="payment",
+                supplier__store_id__in=user_store_ids(self.request.user),
+            )
+            .select_related("supplier")
+            .order_by("-created_at", "-id")
         )
-        .select_related(
-            "supplier"
-        )
-        .order_by(
-            "-created_at",
-            "-id",
-        )
-    )
 
     @transaction.atomic
     def perform_create(
@@ -1875,6 +2017,7 @@ class SupplierPaymentViewSet(
         purchase_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -1887,6 +2030,7 @@ class SupplierPaymentViewSet(
         payment_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -1899,6 +2043,7 @@ class SupplierPaymentViewSet(
         return_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -1932,20 +2077,21 @@ class SupplierPaymentViewSet(
         # انتخاب صندوق
         # --------------------------------
 
+        if not has_store_access(self.request.user, supplier.store_id, {"manager", "cashier"}):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("شما مجوز پرداخت به این تأمین‌کننده را ندارید.")
+
+        cashbox_id = self.request.data.get("cashbox")
+        if not cashbox_id:
+            raise ValidationError({"cashbox": "صندوق پرداخت را مشخص کنید."})
+
         cashbox = (
-            CashBox.objects
-            .filter(
-                store__store_users__user=
-                self.request.user
-            )
-            .order_by("id")
+            CashBox.objects.select_for_update()
+            .filter(pk=cashbox_id, store_id=supplier.store_id)
             .first()
         )
-
         if not cashbox:
-            raise ValidationError(
-                "صندوقی برای پرداخت پیدا نشد."
-            )
+            raise ValidationError({"cashbox": "صندوق متعلق به این فروشگاه نیست."})
 
         # --------------------------------
         # کنترل موجودی صندوق
@@ -2022,13 +2168,14 @@ class SupplierBalanceView(APIView):
         """
 
         supplier = get_object_or_404(
-            Supplier,
-            id=supplier_id
+            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            id=supplier_id,
         )
 
         purchase_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -2041,6 +2188,7 @@ class SupplierBalanceView(APIView):
         payment_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -2053,6 +2201,7 @@ class SupplierBalanceView(APIView):
         return_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -2119,14 +2268,15 @@ class SupplierLedgerView(APIView):
         """
 
         supplier = get_object_or_404(
-            Supplier,
-            id=supplier_id
+            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            id=supplier_id,
         )
 
         transactions = (
             SupplierTransaction.objects
             .filter(
-                supplier=supplier
+                supplier__store_id__in=user_store_ids(request.user),
+                supplier=supplier,
             )
             .order_by(
                 "created_at",
@@ -2380,7 +2530,7 @@ class SupplierPurchaseReportView(APIView):
         # Query خریدها
         # -------------------------
 
-        purchases = Purchase.objects.all()
+        purchases = Purchase.objects.filter(store_id__in=user_store_ids(request.user))
 
         if supplier_id:
             purchases = purchases.filter(
@@ -2574,7 +2724,8 @@ class SupplierPaymentReportView(APIView):
         transactions = (
             SupplierTransaction.objects
             .filter(
-                transaction_type="payment"
+                supplier__store_id__in=user_store_ids(request.user),
+                transaction_type="payment",
             )
         )
 
@@ -3020,29 +3171,31 @@ class PurchaseReturnViewSet(
     3. SupplierTransaction(return) ثبت می‌شود.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
+
     serializer_class = (
         PurchaseReturnSerializer
     )
 
-    permission_classes = [
-        IsAuthenticated
-    ]
 
-    queryset = (
-        PurchaseReturn.objects
-        .select_related(
-            "purchase",
-            "purchase__supplier",
-            "purchase__store",
-            "product",
-            "created_by",
-        )
-        .order_by(
-            "-created_at",
-            "-id",
-        )
-    )
 
+    def get_queryset(self):
+        return (
+            PurchaseReturn.objects
+            .filter(purchase__store_id__in=user_store_ids(self.request.user))
+            .select_related(
+                "purchase", "purchase__supplier", "purchase__store",
+                "product", "created_by",
+            )
+            .order_by("-created_at", "-id")
+        )
     @transaction.atomic
     def perform_create(
         self,
@@ -3075,6 +3228,22 @@ class PurchaseReturnViewSet(
                 "unit_price"
             ]
         )
+
+        # کنترل دسترسی فروشگاه
+        has_access = self.request.user.user_stores.filter(
+            store=purchase.store,
+            role__in={"manager", "warehouse"},
+        ).exists()
+
+        if not has_access:
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
+            raise PermissionDenied(
+                "شما به این فروشگاه دسترسی ندارید."
+            )
+
 
         if quantity <= 0:
             raise ValidationError(
@@ -3215,8 +3384,17 @@ class SupplierSettleView(APIView):
     مبلغ بدهی به صورت خودکار محاسبه می‌شود.
     """
 
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
     permission_classes = [
-        IsAuthenticated
+        IsAuthenticated,
+        StoreRolePermission
     ]
 
     @transaction.atomic
@@ -3226,8 +3404,8 @@ class SupplierSettleView(APIView):
         supplier_id
     ):
         supplier = get_object_or_404(
-            Supplier,
-            id=supplier_id
+            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
+            id=supplier_id,
         )
 
         # -------------------------
@@ -3237,6 +3415,7 @@ class SupplierSettleView(APIView):
         purchase_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -3249,6 +3428,7 @@ class SupplierSettleView(APIView):
         payment_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -3261,6 +3441,7 @@ class SupplierSettleView(APIView):
         return_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -3273,6 +3454,7 @@ class SupplierSettleView(APIView):
         adjustment_total = (
             SupplierTransaction.objects
             .filter(
+                supplier__store_id__in=user_store_ids(request.user),
                 supplier=supplier,
                 transaction_type="adjustment",
             )
@@ -3307,14 +3489,17 @@ class SupplierSettleView(APIView):
         # انتخاب صندوق مجاز کاربر
         # -------------------------
 
+        if not has_store_access(request.user, supplier.store_id, {"manager", "cashier"}):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("شما مجوز تسویه تأمین‌کننده را ندارید.")
+
+        cashbox_id = request.data.get("cashbox")
+        if not cashbox_id:
+            raise ValidationError({"cashbox": "صندوق پرداخت را مشخص کنید."})
+
         cashbox = (
-            CashBox.objects
-            .select_for_update()
-            .filter(
-                store__store_users__user=
-                request.user
-            )
-            .order_by("id")
+            CashBox.objects.select_for_update()
+            .filter(pk=cashbox_id, store_id=supplier.store_id)
             .first()
         )
 
@@ -3429,6 +3614,7 @@ class PurchaseReceiptPDFView(APIView):
                 "user",
             ),
             id=purchase_id,
+            store_id__in=user_store_ids(request.user),
         )
 
         pdf_buffer = (
@@ -3461,7 +3647,7 @@ class ProductBarcodeView(APIView):
     ):
 
         product = get_object_or_404(
-            Product,
+            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
             id=product_id,
         )
 
@@ -3505,7 +3691,7 @@ class ProductQRCodeView(APIView):
     ):
 
         product = get_object_or_404(
-            Product,
+            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
             id=product_id,
         )
 
@@ -3532,7 +3718,7 @@ class ProductLabelPDFView(APIView):
     ):
 
         product = get_object_or_404(
-            Product,
+            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
             id=product_id,
         )
 
@@ -3575,7 +3761,7 @@ class ProductLabelsPDFView(APIView):
     ):
 
         product = get_object_or_404(
-            Product,
+            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
             id=product_id,
         )
 
@@ -3642,12 +3828,13 @@ class ProductBarcodeSearchView(APIView):
 
         if not store_id:
             return Response(
-                {
-                    "detail":
-                        "فروشگاه مشخص نشده است."
-                },
+                {"detail": "فروشگاه مشخص نشده است."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if not has_store_access(request.user, store_id):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
 
         barcode = str(
             barcode
@@ -3661,6 +3848,7 @@ class ProductBarcodeSearchView(APIView):
             )
             .filter(
                 barcode=barcode,
+                category__store_id=store_id,
                 is_active=True,
             )
             .first()

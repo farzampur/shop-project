@@ -19,6 +19,11 @@ import {
   DialogContent,
   DialogActions,
   Divider,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,  
+  TextField,
 } from "@mui/material";
 
 import api from "../../services/api";
@@ -73,11 +78,28 @@ function Purchases() {
   const [deleting, setDeleting] =
     useState(false);
   
+  const [receivePurchase, setReceivePurchase] =
+    useState<Purchase | null>(null);
+
+  const [receiving, setReceiving] =
+    useState(false);  
+  
+  const [returnPurchase, setReturnPurchase] =
+    useState<Purchase | null>(null);
+
+  const [returnProduct, setReturnProduct] =
+    useState<number | "">("");
+ 
+  const [returnQuantity, setReturnQuantity] =
+    useState("");
+  
   const loadPurchases = async () => {
     if (!activeStore) {
       setPurchases([]);
       return;
     }
+
+
 
     setLoading(true);
     setError("");
@@ -171,7 +193,6 @@ function Purchases() {
 	  if (!deletePurchase) {
 		return;
 	  }
-
 	  setDeleting(true);
 	  setError("");
 
@@ -202,6 +223,95 @@ function Purchases() {
 		setDeleting(false);
 	  }
 	};
+
+	const handleReceivePurchase = async () => {
+	  if (!receivePurchase) {
+		return;
+	  }
+
+	  setReceiving(true);
+	  setError("");
+
+	  try {
+		await api.post(
+		  `/products/purchases/${receivePurchase.id}/receive/`
+		);
+
+		setReceivePurchase(null);
+
+		await loadPurchases();
+	  } catch (error: any) {
+		console.error(
+		  "RECEIVE PURCHASE ERROR:",
+		  error.response?.status
+		);
+
+		console.error(
+		  "RECEIVE PURCHASE DATA:",
+		  error.response?.data
+		);
+
+		setError(
+		  error.response?.data?.detail ||
+			"خطا در دریافت خرید."
+		);
+	  } finally {
+		setReceiving(false);
+	  }
+	};
+
+	const handleReturnPurchase = async () => {
+	  if (!returnPurchase || !returnProduct || !returnQuantity) {
+		return;
+	  }
+
+	  setError("");
+
+	  try {
+		const selectedItem =
+		  returnPurchase.items?.find(
+			(item) => item.product === returnProduct
+		  );
+
+		if (!selectedItem) {
+		  setError("کالای انتخاب‌شده پیدا نشد.");
+		  return;
+		}
+
+		await api.post(
+		  "/products/purchase-returns/",
+		  {
+			purchase: returnPurchase.id,
+			product: returnProduct,
+			quantity: returnQuantity,
+			unit_price: selectedItem.unit_price,
+		  }
+		);
+
+		setReturnPurchase(null);
+		setReturnProduct("");
+		setReturnQuantity("");
+
+		await loadPurchases();
+
+	  } catch (error: any) {
+		console.error(
+		  "RETURN PURCHASE ERROR:",
+		  error.response?.status
+		);
+
+		console.error(
+		  "RETURN PURCHASE DATA:",
+		  error.response?.data
+		);
+
+		setError(
+		  error.response?.data?.detail ||
+			"خطا در ثبت برگشت خرید."
+		);
+	  }
+	};
+
 
   return (
     <>
@@ -328,6 +438,30 @@ function Purchases() {
 						    }
 						  >
 						    ویرایش
+						  </Button>
+
+						  <Button
+						    size="small"
+						    variant="contained"
+						    color="success"
+						    disabled={purchase.received}
+						    onClick={() =>
+							  setReceivePurchase(purchase)
+						    }
+						  >
+						    دریافت
+						  </Button>
+
+						  <Button
+						    size="small"
+						    variant="outlined"
+						    color="warning"
+						    disabled={!purchase.received}
+						    onClick={() =>
+							  setReturnPurchase(purchase)
+						    }
+						  >
+						    برگشت خرید
 						  </Button>
 
 						  <Button
@@ -523,6 +657,212 @@ function Purchases() {
 			  </Button>
 		    </DialogActions>
 		  </Dialog>		  
+		  
+		<Dialog
+		  open={receivePurchase !== null}
+		  onClose={() => {
+			if (!receiving) {
+			  setReceivePurchase(null);
+			}
+		  }}
+		  dir="rtl"
+		>
+		  <DialogTitle>
+			تأیید دریافت خرید
+		  </DialogTitle>
+
+		  <DialogContent>
+			<Typography>
+			  آیا خرید شماره{" "}
+			  <strong>
+				{receivePurchase?.id}
+			  </strong>{" "}
+			  را دریافت می‌کنید؟
+			</Typography>
+
+			<Typography sx={{ mt: 2 }}>
+			  پس از دریافت، موجودی کالاها افزایش یافته و
+			  خرید دیگر قابل ویرایش یا حذف نخواهد بود.
+			</Typography>
+		  </DialogContent>
+
+		  <DialogActions>
+			<Button
+			  onClick={() =>
+				setReceivePurchase(null)
+			  }
+			  disabled={receiving}
+			>
+			  انصراف
+			</Button>
+
+			<Button
+			  color="success"
+			  variant="contained"
+			  onClick={handleReceivePurchase}
+			  disabled={receiving}
+			>
+			  {receiving
+				? "در حال دریافت..."
+				: "تأیید دریافت"}
+			</Button>
+		  </DialogActions>
+		</Dialog>		  
+		  
+		<Dialog
+		  open={returnPurchase !== null}
+		  onClose={() => {
+			setReturnPurchase(null);
+		  }}
+		  dir="rtl"
+		>
+		  <DialogTitle>
+			برگشت خرید
+		  </DialogTitle>
+
+		  <DialogContent>
+		    <Typography>
+			  اقلام خرید شماره{" "}
+			  <strong>
+			    {returnPurchase?.id}
+			  </strong>
+		    </Typography>
+
+		    {returnPurchase?.items?.map((item) => (
+			  <Typography
+			    key={item.id}
+			    sx={{ mt: 2 }}
+			  >
+			    {item.product_name} — مقدار خرید:
+			    {" "}
+			    {item.quantity}
+			  </Typography>
+		    ))}
+						
+			<FormControl fullWidth sx={{ mt: 3 }}>
+			  <InputLabel>کالا</InputLabel>
+
+			<Select
+			  value={returnProduct}
+			  label="کالا"
+			  onChange={(event) => {
+				setReturnProduct(
+				  event.target.value as number
+				);
+			  }}
+			>
+				{returnPurchase?.items?.map((item) => (
+				  <MenuItem
+					key={item.id}
+					value={item.product}
+				  >
+					{item.product_name}
+				  </MenuItem>
+				))}
+			  </Select>
+			</FormControl>			
+			
+			<TextField
+			  fullWidth
+			  sx={{ mt: 3 }}
+			  label="مقدار برگشتی"
+			  type="number"
+			  value={returnQuantity}
+			  onChange={(event) => {
+				const value = event.target.value;
+
+				const selectedItem =
+				  returnPurchase?.items?.find(
+					(item) => item.product === returnProduct
+				  );
+
+				if (
+				  selectedItem &&
+				  Number(value) > Number(selectedItem.quantity)
+				) {
+				  setReturnQuantity(
+					String(selectedItem.quantity)
+				  );
+				  return;
+				}
+
+				setReturnQuantity(value);
+			  }}
+			/>			
+
+			{(() => {
+			  const selectedItem =
+				returnPurchase?.items?.find(
+				  (item) => item.product === returnProduct
+				);
+
+			  if (!selectedItem) {
+				return null;
+			  }
+
+			  return (
+				<Typography sx={{ mt: 2 }}>
+				  حداکثر مقدار قابل برگشت:{" "}
+				  <strong>
+					{selectedItem.quantity}
+				  </strong>
+				</Typography>
+			  );
+			})()}
+
+			{(() => {
+			  const selectedItem =
+				returnPurchase?.items?.find(
+				  (item) => item.product === returnProduct
+				);
+
+			  if (!selectedItem || !returnQuantity) {
+				return null;
+			  }
+
+			  const totalAmount =
+				Number(returnQuantity) *
+				Number(selectedItem.unit_price);
+
+			  return (
+				<Typography
+				  sx={{
+					mt: 2,
+					fontWeight: "bold",
+				  }}
+				>
+				  مبلغ برگشت:{" "}
+				  {totalAmount.toLocaleString("fa-IR")} تومان
+				</Typography>
+			  );
+			})()}
+			
+		  </DialogContent>
+
+			<DialogActions>
+			  <Button
+				onClick={() => {
+				  setReturnPurchase(null);
+				  setReturnProduct("");
+				  setReturnQuantity("");
+				}}
+			  >
+				انصراف
+			  </Button>
+
+			  <Button
+				color="warning"
+				variant="contained"
+				onClick={handleReturnPurchase}
+				disabled={
+				  !returnProduct ||
+				  !returnQuantity
+				}
+			  >
+				ثبت برگشت
+			  </Button>
+			</DialogActions>
+		</Dialog>		  
 		  
         </>
       )}

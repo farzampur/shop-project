@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
-from .models import Cart, Order, OrderItem, CustomerTransaction
+from .models import Cart, Order, OrderItem, CustomerTransaction, Payment, CashBox, CashBoxTransaction
 
 from products.models import Inventory
 from products.models import InventoryTransaction
@@ -43,6 +43,9 @@ class CartValidationService:
                 "سبد خرید پیدا نشد."
             )
 
+        if cart.customer_id and cart.customer.store_id != cart.store_id:
+            raise ValidationError("مشتری متعلق به فروشگاه این سبد نیست.")
+
         items = cart.items.select_related(
             "product",
             "product__category",
@@ -56,6 +59,11 @@ class CartValidationService:
         for item in items:
 
             product = item.product
+
+            if product.category.store_id != cart.store_id:
+                raise ValidationError(
+                    f"کالای «{product.name}» متعلق به فروشگاه این سبد نیست."
+                )
 
             # فعال بودن کالا
             if not product.is_active:
@@ -95,197 +103,206 @@ class CheckoutService:
 
     @staticmethod
     @transaction.atomic
-    def checkout(cart):
-
-        # 1. اعتبارسنجی Cart
+    def checkout(cart, payments=None):
+        """Create a sale and atomically settle inventory/cash/customer ledger."""
+        cart = Cart.objects.select_for_update().get(pk=cart.pk)
         CartValidationService.validate(cart)
 
-        # 2. ایجاد Order
- 
-        total_before_discount = 0
-        total_discount = 0
-        total_price = 0
-
-        for cart_item in cart.items.all():
-
-            line_before_discount = (
-                cart_item.quantity *
-                cart_item.unit_price
-            )
-
-            line_discount = (
-                line_before_discount *
-                cart_item.discount_percent / 100
-            )
-
-            line_total = (
-                line_before_discount -
-                line_discount
-            )
-
-            total_before_discount += line_before_discount
-            total_discount += line_discount
-            total_price += line_total
+        items = list(cart.items.select_related("product", "product__category"))
+        totals = [Decimal("0"), Decimal("0"), Decimal("0")]
+        for item in items:
+            before = item.quantity * item.unit_price
+            discount = before * item.discount_percent / Decimal("100")
+            totals[0] += before
+            totals[1] += discount
+            totals[2] += before - discount
 
         order = Order.objects.create(
-            user=cart.user,
-            store=cart.store,
-            customer=cart.customer,
+            user=cart.user, store=cart.store, customer=cart.customer,
             status="pending",
-            total_before_discount=total_before_discount,
-            total_discount=total_discount,
-            total_price=total_price,
+            total_before_discount=totals[0],
+            total_discount=totals[1],
+            total_price=totals[2],
         )
 
-        if order.customer:
-                        
-            CustomerTransaction.objects.create(
-                customer=order.customer,
-                transaction_type="sale",
-                amount=order.total_price,
-                reference_id=order.id,
-                description=f"Order #{order.id}"
-            )        
+        # Lock every inventory row before changing stock.
+        inventories = {}
+        for item in items:
+            inventory = (Inventory.objects.select_for_update()
+                         .select_related("product")
+                         .filter(product_id=item.product_id, store=cart.store).first())
+            if not inventory or inventory.quantity < item.quantity:
+                raise ValidationError(
+                    f"موجودی کالای «{item.product.name}» کافی نیست."
+                )
+            inventories[item.product_id] = inventory
 
-
-        # 3. ایجاد OrderItemها
-        for cart_item in cart.items.select_related(
-            "product",
-            "product__category",
-        ):
-
-            product = cart_item.product
-
-            quantity = cart_item.quantity
-            unit_price = cart_item.unit_price
-            discount_percent = cart_item.discount_percent
-
-            # مبلغ قبل از تخفیف
-            item_total_before_discount = (
-                quantity * unit_price
-            )
-
-            # مبلغ تخفیف واحد
-            discount_amount = (
-                unit_price * discount_percent / 100
-            )
-
-            # مبلغ نهایی واحد
-            final_unit_price = (
-                unit_price - discount_amount
-            )
-
-            # کل تخفیف
-            total_discount_amount = (
-                quantity * discount_amount
-            )
-
-            # مبلغ نهایی
-            item_total_price = (
-                quantity * final_unit_price
-            )
-
+        for item in items:
+            before = item.quantity * item.unit_price
+            discount_amount = item.unit_price * item.discount_percent / Decimal("100")
+            final_unit_price = item.unit_price - discount_amount
             OrderItem.objects.create(
-                order=order,
-                product=product,
-                product_name=product.name,
-                quantity=quantity,
-                unit_price=unit_price,
-                discount_percent=discount_percent,
+                order=order, product=item.product, product_name=item.product.name,
+                quantity=item.quantity, unit_price=item.unit_price,
+                purchase_price=item.product.purchase_price,
+                discount_percent=item.discount_percent,
                 discount_amount=discount_amount,
-                total_price_before_discount=(
-                    item_total_before_discount
-                ),
-                total_discount_amount=(
-                    total_discount_amount
-                ),
-                total_price=item_total_price,
+                total_price_before_discount=before,
+                total_discount_amount=item.quantity * discount_amount,
+                total_price=item.quantity * final_unit_price,
             )
 
-        # 5. کاهش موجودی
-        for cart_item in cart.items.select_related(
-            "product"
-        ):
-
-            inventory = cart_item.product.inventories.filter(
-                store=cart.store
-            ).first()
-
-            if not inventory:
-                raise ValidationError(
-                    f"موجودی کالای "
-                    f"«{cart_item.product.name}» پیدا نشد."
-                )
-
-            if inventory.quantity < cart_item.quantity:
-                raise ValidationError(
-                    f"موجودی کالای "
-                    f"«{cart_item.product.name}» کافی نیست."
-                )
-
-            inventory.quantity -= cart_item.quantity
-            inventory.save(
-                update_fields=[
-                    "quantity",
-                    "updated_at",
-                ]
-            )
+        # Inventory is reserved/consumed at checkout and is reversed on cancellation.
+        for item in items:
+            inventory = inventories[item.product_id]
+            inventory.quantity -= item.quantity
+            inventory.save(update_fields=["quantity", "updated_at"])
             InventoryTransaction.objects.create(
-                product=cart_item.product,
-                store=cart.store,
-                transaction_type="sale",
-                quantity=cart_item.quantity,
-                reference_id=order.id,
-                description=f"Order #{order.id}"
-            )            
+                product=item.product, store=cart.store, transaction_type="sale",
+                quantity=item.quantity, reference_id=order.id,
+                description=f"Order #{order.id}",
+            )
 
-
-        # 6. خالی کردن Cart
+        CheckoutService._settle_order(order, payments or [])
         cart.items.all().delete()
-
         return order
 
+    @staticmethod
+    def _settle_order(order, payments):
+        total = Decimal(order.total_price)
+        if not payments:
+            return
 
+        allowed_methods = {"cash", "card", "credit"}
+        for payment in payments:
+            method = payment.get("method")
+            amount = Decimal(payment.get("amount", 0))
+            if method not in allowed_methods:
+                raise ValidationError({"payments": "روش پرداخت نامعتبر است."})
+            if amount <= 0:
+                raise ValidationError({"payments": "مبلغ هر پرداخت باید بیشتر از صفر باشد."})
+            if method in {"cash", "card"} and not payment.get("cashbox_id"):
+                raise ValidationError({"payments": "برای پرداخت نقدی/کارتخوان صندوق الزامی است."})
+            if method == "credit" and payment.get("cashbox_id"):
+                raise ValidationError({"payments": "برای پرداخت حسابی صندوق ارسال نکنید."})
+
+        paid = sum((Decimal(p["amount"]) for p in payments), Decimal("0"))
+        if paid != total:
+            raise ValidationError({"payments": "مجموع پرداخت‌ها باید دقیقاً برابر مبلغ سفارش باشد."})
+
+        if any(p["method"] == "credit" for p in payments) and not order.customer:
+            raise ValidationError({"payments": "فروش حسابی بدون مشتری مجاز نیست."})
+
+        cashbox_ids = [p.get("cashbox_id") for p in payments if p["method"] in {"cash", "card"}]
+        cashboxes = {
+            cb.id: cb for cb in CashBox.objects.select_for_update().filter(
+                id__in=cashbox_ids, store=order.store
+            )
+        }
+
+        for p in payments:
+            amount = Decimal(p["amount"])
+            method = p["method"]
+            cashbox = None
+            if method in {"cash", "card"}:
+                cashbox = cashboxes.get(p.get("cashbox_id"))
+                if not cashbox:
+                    raise ValidationError({"payments": "صندوق انتخاب‌شده متعلق به این فروشگاه نیست."})
+                cashbox.balance += amount
+                cashbox.save(update_fields=["balance", "updated_at"])
+                CashBoxTransaction.objects.create(
+                    cashbox=cashbox, transaction_type="receive", amount=amount,
+                    reference_id=order.id, description=f"Order #{order.id} / {method}",
+                )
+            else:
+                CustomerTransaction.objects.create(
+                    customer=order.customer, store=order.store,
+                    transaction_type="sale", amount=amount,
+                    reference_id=order.id, description=f"Order #{order.id}",
+                )
+
+            Payment.objects.create(
+                order=order, method=method, amount=amount, cashbox=cashbox
+            )
+
+        order.status = "paid"
+        order.save(update_fields=["status", "updated_at"])
 
 
 class OrderService:
 
     @staticmethod
     @transaction.atomic
+    def settle(order, payments):
+        order = Order.objects.select_for_update().get(pk=order.pk)
+        if order.status not in {"pending", "confirmed"}:
+            raise ValidationError("این سفارش قابل پرداخت نیست.")
+        CheckoutService._settle_order(order, payments)
+        return order
+
+    ALLOWED_TRANSITIONS = {
+        "pending": {"confirmed", "cancelled"},
+        "confirmed": {"cancelled"},
+        "paid": {"cancelled"},
+        "cancelled": set(),
+    }
+
+    @staticmethod
+    @transaction.atomic
     def change_status(order, new_status):
-
+        original_order = order
+        order = Order.objects.select_for_update().get(pk=order.pk)
         old_status = order.status
+        if new_status not in OrderService.ALLOWED_TRANSITIONS.get(old_status, set()):
+            raise ValidationError(
+                f"تغییر وضعیت از «{old_status}» به «{new_status}» مجاز نیست."
+            )
 
-        if old_status == new_status:
-            return order
-
-        if (
-            old_status != "cancelled"
-            and new_status == "cancelled"
-        ):
-
-            for item in order.items.all():
-
+        if new_status == "cancelled":
+            # Reverse stock exactly once.
+            for item in order.items.select_related("product"):
                 inventory = Inventory.objects.select_for_update().get(
-                    product_id=item.product_id,
-                    store=order.store,
+                    product_id=item.product_id, store=order.store
+                )
+                inventory.quantity += item.quantity
+                inventory.save(update_fields=["quantity", "updated_at"])
+                InventoryTransaction.objects.create(
+                    product=item.product, store=order.store, transaction_type="return",
+                    quantity=item.quantity, reference_id=order.id,
+                    description=f"Cancel Order #{order.id}",
                 )
 
-                inventory.quantity += item.quantity
+            # Reverse cash settlements.
+            for payment in order.payments.select_related("cashbox"):
+                if payment.cashbox_id:
+                    cashbox = CashBox.objects.select_for_update().get(pk=payment.cashbox_id)
+                    if cashbox.balance < payment.amount:
+                        raise ValidationError("موجودی صندوق برای برگشت وجه کافی نیست.")
+                    cashbox.balance -= payment.amount
+                    cashbox.save(update_fields=["balance", "updated_at"])
+                    CashBoxTransaction.objects.create(
+                        cashbox=cashbox, transaction_type="payment", amount=payment.amount,
+                        reference_id=order.id, description=f"Refund Order #{order.id}",
+                    )
 
-                inventory.save()
-                InventoryTransaction.objects.create(
-                    product=item.product,
-                    store=order.store,
-                    transaction_type="return",
-                    quantity=item.quantity,
-                    reference_id=order.id,
-                    description=f"Cancel Order #{order.id}"
-)
+            # Reverse customer account entries only when the sale was on account.
+            # Cash/card sales may legitimately have no customer.
+            if order.customer_id:
+                for tx in order.customer.transactions.filter(
+                    reference_id=order.id, transaction_type="sale"
+                ):
+                    CustomerTransaction.objects.create(
+                        customer=tx.customer, store=order.store, transaction_type="payment",
+                        amount=tx.amount, reference_id=order.id,
+                        description=f"Cancel Order #{order.id}",
+                    )
+
         order.status = new_status
-        order.save()
-
-        return order
+        order.save(update_fields=["status", "updated_at"])
+        # Keep the caller's instance in sync with the locked database instance.
+        original_order.status = order.status
+        original_order.updated_at = order.updated_at
+        return original_order
 
 
 ## چاپ فاکتور ##
