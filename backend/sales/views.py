@@ -17,7 +17,7 @@ from accounts.permissions import StoreRolePermission
 from accounts.store_access import has_store_access, require_store_access, user_store_ids
 from django.utils import timezone
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
-from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer
+from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer, Payment
 
 from django.http import FileResponse
 
@@ -58,12 +58,17 @@ class CartViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-
-        return Cart.objects.filter(
+        queryset = Cart.objects.filter(
             user=self.request.user
         ).prefetch_related(
             "items__product"
         )
+
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+
+        return queryset.order_by("-updated_at", "-id")
 
     def perform_create(self, serializer):
 
@@ -104,14 +109,36 @@ class CartItemViewSet(viewsets.ModelViewSet):
         )
 
     def get_serializer_class(self):
-
         if self.action == "create":
             return CartItemCreateSerializer
-
         if self.action in ["update", "partial_update"]:
             return CartItemUpdateSerializer
-
         return CartItemSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Create/update a cart item and always return the full read serializer."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        output = CartItemSerializer(
+            serializer.instance,
+            context=self.get_serializer_context(),
+        )
+        return Response(output.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        output = CartItemSerializer(
+            serializer.instance,
+            context=self.get_serializer_context(),
+        )
+        return Response(output.data)
 
     def perform_create(self, serializer):
 
@@ -155,13 +182,20 @@ class CartItemViewSet(viewsets.ModelViewSet):
             )
 
             if not product:
-
                 raise ValidationError(
                     {
                         "barcode":
                             "کالایی با این بارکد پیدا نشد."
                     }
                 )
+
+        if not product:
+            raise ValidationError({"product": "کالا مشخص نشده است."})
+
+        if product.category.store_id != cart.store_id:
+            raise ValidationError(
+                {"product": "این کالا متعلق به فروشگاه انتخاب‌شده نیست."}
+            )
 
         # -----------------------------
         # ادامه منطق فعلی
@@ -201,8 +235,9 @@ class CartItemViewSet(viewsets.ModelViewSet):
 
         if inventory.quantity < quantity:
             raise ValidationError(
-                f"موجودی کافی نیست. موجودی فعلی: "
-                f"{inventory.quantity}"
+                f"موجودی کالای «{product.name}» برای فروش کافی نیست. "
+                f"موجودی فعلی: {inventory.quantity} واحد؛ "
+                f"مقدار درخواستی: {quantity} واحد."
             )
 
         unit_price = product.sale_price
@@ -222,8 +257,9 @@ class CartItemViewSet(viewsets.ModelViewSet):
 
             if inventory.quantity < new_quantity:
                 raise ValidationError(
-                    f"موجودی کافی نیست. موجودی فعلی: "
-                    f"{inventory.quantity}"
+                    f"موجودی کالای «{product.name}» برای افزودن به سبد کافی نیست. "
+                    f"موجودی فعلی: {inventory.quantity} واحد؛ "
+                    f"مقدار درخواستی نهایی سبد: {new_quantity} واحد."
                 )
 
             item.quantity = new_quantity
@@ -274,8 +310,9 @@ class CartItemViewSet(viewsets.ModelViewSet):
 
         if inventory.quantity < new_quantity:
             raise ValidationError(
-                f"موجودی کافی نیست. موجودی فعلی: "
-                f"{inventory.quantity}"
+                f"موجودی کالای «{item.product.name}» برای فروش کافی نیست. "
+                f"موجودی فعلی: {inventory.quantity} واحد؛ "
+                f"مقدار درخواستی: {new_quantity} واحد."
             )
 
         serializer.save(
@@ -333,15 +370,18 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
     ]
 
     def get_queryset(self):
-
-        return Order.objects.filter(
+        queryset = Order.objects.filter(
             store_id__in=user_store_ids(self.request.user)
         ).prefetch_related(
             "items"
         ).select_related(
             "store",
             "user",
-        ).order_by("-id")
+        )
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        return queryset.order_by("-id")
 
 
     @action(detail=True,methods=["post"])
@@ -360,15 +400,15 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
 
         order = OrderService.change_status(
             order,
-            serializer.validated_data["status"]
+            serializer.validated_data["status"],
+            user=request.user,
+            reason=serializer.validated_data.get("reason", ""),
         )
 
-        return Response(
-            {
-                "id": order.id,
-                "status": order.status,
-            }
-        )       
+        payload = {"id": order.id, "status": order.status}
+        if order.status == "cancelled":
+            payload["cashbox_reconciliation"] = OrderService.cashbox_reconciliation(order)
+        return Response(payload)       
        
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
@@ -382,149 +422,95 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class SalesReportViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
 
-    permission_classes = [
-        IsAuthenticated
-    ]
+    def _orders(self, request, include_cancelled=True):
+        qs = Order.objects.filter(store_id__in=user_store_ids(request.user))
+        store_id = request.query_params.get("store")
+        if store_id:
+            qs = qs.filter(store_id=store_id)
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if start_date:
+            try: datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError: raise ValidationError({"start_date": "فرمت صحیح YYYY-MM-DD است."})
+            qs = qs.filter(created_at__date__gte=start_date)
+        if end_date:
+            try: datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError: raise ValidationError({"end_date": "فرمت صحیح YYYY-MM-DD است."})
+            qs = qs.filter(created_at__date__lte=end_date)
+        return qs if include_cancelled else qs.exclude(status="cancelled")
 
     def list(self, request):
+        rows = self._orders(request, False).annotate(day=TruncDate("created_at")).values("day").annotate(order_count=Count("id"), total_sales=Sum("total_price")).order_by("-day")
+        return Response(rows)
 
-        queryset = Order.objects.filter(
-            store_id__in=user_store_ids(request.user)
-        ).annotate(
-            day=TruncDate("created_at")
-        ).values(
-            "day"
-        ).annotate(
-            order_count=Count("id"),
-            total_sales=Sum("total_price")
-        ).order_by(
-            "-day"
-        )
-
-        return Response(
-            queryset
-        )
-
-    @action(detail=False,methods=["get"])
+    @action(detail=False, methods=["get"])
     def monthly(self, request):
+        rows = self._orders(request, False).annotate(month=TruncMonth("created_at")).values("month").annotate(order_count=Count("id"), total_sales=Sum("total_price")).order_by("-month")
+        return Response(rows)
 
-        queryset = (
-            Order.objects
-            .filter(
-                store_id__in=user_store_ids(request.user)
-            )
-            .annotate(
-                month=TruncMonth(
-                    "created_at"
-                )
-            )
-            .values(
-                "month"
-            )
-            .annotate(
-                order_count=Count("id"),
-                total_sales=Sum(
-                    "total_price"
-                )
-            )
-            .order_by(
-                "-month"
-            )
-        )
-
-        return Response(
-            queryset
-        )
-            
-    @action(detail=False,methods=["get"])
+    @action(detail=False, methods=["get"])
     def top_products(self, request):
+        rows = OrderItem.objects.filter(order__in=self._orders(request, False)).values("product_id", "product_name").annotate(total_quantity=Sum("quantity"), total_sales=Sum("total_price")).order_by("-total_quantity")[:20]
+        return Response(rows)
 
-        queryset = (
-            OrderItem.objects
-            .filter(order__store_id__in=user_store_ids(request.user))
-            .values(
-                "product_id",
-                "product_name"
-            )
-            .annotate(
-                total_quantity=Sum(
-                    "quantity"
-                ),
-                total_sales=Sum(
-                    "total_price"
-                )
-            )
-            .order_by(
-                "-total_quantity"
-            )[:20]
-        )
-
-        return Response(
-            queryset
-        )        
-        
-    @action(detail=False,methods=["get"])
+    @action(detail=False, methods=["get"])
     def profit(self, request):
+        total_sales = Decimal("0"); total_cost = Decimal("0")
+        for item in OrderItem.objects.filter(order__in=self._orders(request, False)).only("quantity", "purchase_price", "total_price"):
+            total_sales += item.total_price; total_cost += item.quantity * item.purchase_price
+        return Response({"total_sales": total_sales, "total_cost": total_cost, "total_profit": total_sales-total_cost})
 
-        total_sales = Decimal("0")
-        total_cost = Decimal("0")
-        items = OrderItem.objects.filter(order__store_id__in=user_store_ids(request.user)).select_related("product")
-
-        for item in items:
-            sale_amount = item.total_price
-
-            cost_amount = (
-                item.quantity *
-                item.purchase_price
-            )
-            total_sales += sale_amount
-            total_cost += cost_amount
-
-        total_profit = (
-            total_sales -
-            total_cost
-        )
-
-        return Response(
-            {
-                "total_sales": total_sales,
-                "total_cost": total_cost,
-                "total_profit": total_profit,
-            }
-        )        
-
-    @action(detail=False,methods=["get"])
+    @action(detail=False, methods=["get"])
     def financial(self, request):
+        sales = self._orders(request, False).aggregate(total=Sum("total_price"))["total"] or Decimal("0")
+        expenses = Expense.objects.filter(store_id__in=user_store_ids(request.user))
+        store_id=request.query_params.get("store")
+        if store_id: expenses=expenses.filter(store_id=store_id)
+        start_date=request.query_params.get("start_date"); end_date=request.query_params.get("end_date")
+        if start_date: expenses=expenses.filter(expense_date__gte=start_date)
+        if end_date: expenses=expenses.filter(expense_date__lte=end_date)
+        expense_total=expenses.aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        return Response({"sales":sales,"expenses":expense_total,"balance":sales-expense_total})
 
-        expense_total = (
-            Expense.objects.filter(
-                store_id__in=user_store_ids(request.user)
-            ).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
-        )
+    @action(detail=False, methods=["get"])
+    def payment_methods(self, request):
+        labels={"cash":"نقدی","card":"کارتخوان","credit":"اعتباری"}
+        rows=Payment.objects.filter(order__in=self._orders(request, False)).values("method").annotate(amount=Sum("amount"),transaction_count=Count("id")).order_by("method")
+        return Response([{**row,"method_name":labels.get(row["method"],row["method"])} for row in rows])
 
-        total_sales = (
-            Order.objects.filter(
-                store_id__in=user_store_ids(request.user)
-            ).aggregate(
-                total=Sum("total_price")
-            )["total"]
-            or 0
-        )
+    @action(detail=False, methods=["get"])
+    def cancellations(self, request):
+        rows=Order.objects.filter(store_id__in=user_store_ids(request.user),status="cancelled").select_related("store","cancellation__cancelled_by").order_by("-updated_at")
+        store_id=request.query_params.get("store")
+        if store_id: rows=rows.filter(store_id=store_id)
+        start_date=request.query_params.get("start_date"); end_date=request.query_params.get("end_date")
+        if start_date: rows=rows.filter(updated_at__date__gte=start_date)
+        if end_date: rows=rows.filter(updated_at__date__lte=end_date)
+        data=[]
+        for o in rows[:100]:
+            c=getattr(o,"cancellation",None)
+            data.append({"order_id":o.id,"store":o.store.name,"cancelled_by":c.cancelled_by.username if c else None,"cancelled_at":c.cancelled_at if c else o.updated_at,"reason":c.reason if c else "","amount":o.total_price})
+        return Response(data)
 
-        return Response(
-            {
-                "sales": total_sales,
-                "expenses": expense_total,
-                "balance":
-                    total_sales -
-                    expense_total,
-            }
-        )            
-        
+    @action(detail=False, methods=["get"], url_path="cash-reconciliation")
+    def cash_reconciliation(self, request):
+        store_id=request.query_params.get("store")
+        allowed_store_ids = user_store_ids(request.user)
+        if not any(has_store_access(request.user, sid, {"manager", "cashier"}) for sid in allowed_store_ids):
+            raise PermissionDenied("مشاهده گزارش مغایرت صندوق فقط برای مدیر یا صندوقدار مجاز است.")
+        if store_id and not has_store_access(request.user, store_id, {"manager", "cashier"}):
+            raise PermissionDenied("شما مجوز مشاهده صندوق این فروشگاه را ندارید.")
+        cashboxes=CashBox.objects.filter(store_id__in=user_store_ids(request.user)).select_related("store")
+        if store_id: cashboxes=cashboxes.filter(store_id=store_id)
+        data=[]
+        for cb in cashboxes:
+            agg=cb.transactions.aggregate(received=Coalesce(Sum("amount",filter=Q(transaction_type__in=["receive","deposit"])),Decimal("0")),paid=Coalesce(Sum("amount",filter=Q(transaction_type__in=["payment","withdraw"])),Decimal("0")))
+            ledger=agg["received"]-agg["paid"]
+            data.append({"id":cb.id,"name":cb.name,"store":cb.store.name,"balance":cb.balance,"ledger_balance":ledger,"difference":cb.balance-ledger,"is_balanced":cb.balance==ledger})
+        return Response(data)
+
 class DashboardView(APIView):
 
     permission_classes = [
@@ -538,12 +524,12 @@ class DashboardView(APIView):
         today_orders = Order.objects.filter(
             store_id__in=store_ids,
             created_at__date=today,
-        )
+        ).exclude(status="cancelled")
         month_orders = Order.objects.filter(
             store_id__in=store_ids,
             created_at__year=today.year,
             created_at__month=today.month,
-        )
+        ).exclude(status="cancelled")
 
         today_sales = (
             today_orders.aggregate(
@@ -574,7 +560,7 @@ class DashboardView(APIView):
         total_sales_amount = Decimal("0")
         total_cost_amount = Decimal("0")
 
-        for item in OrderItem.objects.filter(order__store_id__in=store_ids).select_related("product"):
+        for item in OrderItem.objects.filter(order__store_id__in=store_ids).exclude(order__status="cancelled").select_related("product"):
             total_sales_amount += item.total_price
             total_cost_amount += (
                 item.quantity *
@@ -699,10 +685,13 @@ class CustomerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, StoreRolePermission]
 
     def get_queryset(self):
-
-        return Customer.objects.filter(
+        queryset = Customer.objects.filter(
             store_id__in=user_store_ids(self.request.user)
         )
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        return queryset
         
 class CustomerReportView(APIView):
     permission_classes = [
@@ -1082,9 +1071,13 @@ class CashBoxViewSet(
         instance.delete()
 
     def get_queryset(self):
-        return CashBox.objects.filter(
+        queryset = CashBox.objects.filter(
             store_id__in=user_store_ids(self.request.user)
-        ).select_related("store").order_by("name")
+        ).select_related("store")
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        return queryset.order_by("name")
 
 
 class CashBoxTransactionViewSet(
@@ -1760,11 +1753,13 @@ class InvoicePDFView(APIView):
         order = get_object_or_404(
             Order.objects
             .prefetch_related(
-                "items"
+                "items",
+                "payments",
             )
             .select_related(
                 "store",
                 "user",
+                "customer",
             ),
             id=order_id,
             store_id__in=user_store_ids(request.user),

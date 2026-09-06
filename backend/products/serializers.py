@@ -56,6 +56,8 @@ class ProductSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
 
+    inventory_quantity = serializers.SerializerMethodField()
+
     created_at = JalaliDateTimeField(
         with_time=True
     )
@@ -74,6 +76,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "category",
             "category_name",
             "store_name",
+            "inventory_quantity",
             "unit",
             "purchase_price",
             "sale_price",
@@ -88,7 +91,16 @@ class ProductSerializer(serializers.ModelSerializer):
             "updated_at",
             "category_name",
             "store_name",
+            "inventory_quantity",
         ]
+
+    def get_inventory_quantity(self, obj):
+        request = self.context.get("request")
+        store_id = request.query_params.get("store") if request else None
+        if not store_id:
+            return None
+        inventory = obj.inventories.filter(store_id=store_id).first()
+        return inventory.quantity if inventory else 0
 
 
     def to_internal_value(self, data):

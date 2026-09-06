@@ -250,6 +250,21 @@ class Order(models.Model):
         
         
         
+class OrderCancellation(models.Model):
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, related_name="cancellation", verbose_name="سفارش")
+    cancelled_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="order_cancellations", verbose_name="لغوکننده")
+    cancelled_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان لغو")
+    reason = models.CharField(max_length=500, blank=True, verbose_name="علت لغو")
+
+    class Meta:
+        verbose_name = "تاریخچه لغو فروش"
+        verbose_name_plural = "تاریخچه لغو فروش‌ها"
+        ordering = ["-cancelled_at", "-id"]
+
+    def __str__(self):
+        return f"لغو سفارش {self.order_id}"
+
+
 class OrderItem(models.Model):
 
     order = models.ForeignKey(

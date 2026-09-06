@@ -10,7 +10,7 @@ from threading import Barrier
 from accounts.models import UserStore
 from core.models import Store
 from products.models import Category, Product, Inventory
-from .models import Cart, CartItem, Order, Customer, CashBox, CashBoxTransaction, CustomerTransaction, Payment
+from .models import Cart, CartItem, Order, OrderCancellation, Customer, CashBox, CashBoxTransaction, CustomerTransaction, Payment
 from .services import CheckoutService, OrderService
 from .views import CustomerViewSet, CashBoxViewSet
 
@@ -191,6 +191,32 @@ class FinancialCoreTests(TestCase):
         item.refresh_from_db()
         self.assertEqual(item.purchase_price, Decimal("50"))
 
+
+    def test_cancellation_audit_records_user_and_reason(self):
+        order = CheckoutService.checkout(self.make_cart(), [{"method":"cash","amount":Decimal("200"),"cashbox_id":self.cash_a.id}])
+        OrderService.change_status(order, "cancelled", user=self.user, reason="درخواست مشتری")
+        audit = OrderCancellation.objects.get(order=order)
+        self.assertEqual(audit.cancelled_by_id, self.user.id)
+        self.assertEqual(audit.reason, "درخواست مشتری")
+
+    def test_cancellation_reconciles_cashbox_ledger(self):
+        order = CheckoutService.checkout(self.make_cart(), [{"method":"cash","amount":Decimal("200"),"cashbox_id":self.cash_a.id}])
+        OrderService.change_status(order, "cancelled", user=self.user)
+        result = OrderService.cashbox_reconciliation(order)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0]["is_balanced"])
+        self.assertEqual(result[0]["difference"], Decimal("0"))
+
+    def test_cancelled_orders_are_excluded_from_sales_reports(self):
+        order = CheckoutService.checkout(self.make_cart(), [{"method":"cash","amount":Decimal("200"),"cashbox_id":self.cash_a.id}])
+        OrderService.change_status(order, "cancelled", user=self.user)
+        from .views import SalesReportViewSet
+        request = APIRequestFactory().get("/sales-report/", {"store": self.store_a.id})
+        force_authenticate(request, user=self.user)
+        view = SalesReportViewSet(); view.action_map={"get":"list"}; view.request=view.initialize_request(request)
+        response = view.list(view.request)
+        self.assertEqual(response.data, [])
+
     def test_seller_cannot_create_manual_customer_debt(self):
         from rest_framework.test import APIRequestFactory
         from .views import CustomerTransactionViewSet
@@ -296,6 +322,67 @@ class ConcurrencyHardeningTests(TransactionTestCase):
         self.assertEqual(Payment.objects.filter(order=order).count(), 1)
         self.cashbox.refresh_from_db()
         self.assertEqual(self.cashbox.balance, Decimal("100"))
+
+class OrderCancellationTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="cancel_user", password="pw")
+        self.store = Store.objects.create(name="Cancel Store", code="CANCEL")
+        UserStore.objects.create(user=self.user, store=self.store, role="cashier")
+        self.category = Category.objects.create(name="Cancel Cat", store=self.store)
+        self.product = Product.objects.create(
+            name="Cancel Product", barcode="8888888888888", category=self.category,
+            purchase_price=Decimal("50"), sale_price=Decimal("100"),
+        )
+        Inventory.objects.create(product=self.product, store=self.store, quantity=10)
+        self.cashbox = CashBox.objects.create(store=self.store, name="Cancel Cash")
+        self.customer = Customer.objects.create(store=self.store, first_name="Test", mobile="09121111111")
+
+    def make_order(self, payments):
+        cart = Cart.objects.create(user=self.user, store=self.store, customer=self.customer)
+        CartItem.objects.create(cart=cart, product=self.product, quantity=2, unit_price=Decimal("100"))
+        return CheckoutService.checkout(cart, payments)
+
+    def test_cancel_cash_card_credit_restores_all_financials_and_stock(self):
+        order = self.make_order([
+            {"method": "cash", "amount": Decimal("80"), "cashbox_id": self.cashbox.id},
+            {"method": "card", "amount": Decimal("70"), "cashbox_id": self.cashbox.id},
+            {"method": "credit", "amount": Decimal("50"), "cashbox_id": None},
+        ])
+        self.assertEqual(order.status, "paid")
+        self.cashbox.refresh_from_db()
+        self.assertEqual(self.cashbox.balance, Decimal("150"))
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store).quantity, Decimal("8"))
+
+        OrderService.change_status(order, "cancelled")
+
+        order.refresh_from_db()
+        self.cashbox.refresh_from_db()
+        self.assertEqual(order.status, "cancelled")
+        self.assertEqual(self.cashbox.balance, Decimal("0"))
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store).quantity, Decimal("10"))
+        self.assertEqual(
+            CustomerTransaction.objects.filter(customer=self.customer, reference_id=order.id, transaction_type="sale").count(),
+            1,
+        )
+        self.assertEqual(
+            CustomerTransaction.objects.filter(customer=self.customer, reference_id=order.id, transaction_type="payment").aggregate(total=models.Sum("amount"))["total"],
+            Decimal("50"),
+        )
+        self.assertEqual(
+            CashBoxTransaction.objects.filter(cashbox=self.cashbox, reference_id=order.id, transaction_type="payment").aggregate(total=models.Sum("amount"))["total"],
+            Decimal("150"),
+        )
+        self.assertEqual(Payment.objects.filter(order=order).count(), 3)
+
+    def test_cancel_is_idempotently_rejected(self):
+        order = self.make_order([{"method": "cash", "amount": Decimal("200"), "cashbox_id": self.cashbox.id}])
+        OrderService.change_status(order, "cancelled")
+        with self.assertRaises(Exception):
+            OrderService.change_status(order, "cancelled")
+        self.cashbox.refresh_from_db()
+        self.assertEqual(self.cashbox.balance, Decimal("0"))
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store).quantity, Decimal("10"))
+
 
 class PermissionsMatrixTests(TestCase):
     """Lock the intended per-store role matrix at the permission boundary."""

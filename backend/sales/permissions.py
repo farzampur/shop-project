@@ -14,6 +14,8 @@ MAX_DISCOUNT_BY_ROLE = {
 
 
 def get_user_max_discount(user, store):
+    if user.is_superuser:
+        return MAX_DISCOUNT_BY_ROLE["manager"]
 
     user_store = UserStore.objects.filter(
         user=user,

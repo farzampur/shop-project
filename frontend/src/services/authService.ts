@@ -1,5 +1,14 @@
-import api from "./api";
+import axios from "axios";
 import { tokenService } from "./tokenService";
+
+const AUTH_BASE_URL = "http://127.0.0.1:8000/api";
+
+const authApi = axios.create({
+  baseURL: AUTH_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
 export interface LoginResponse {
   access: string;
@@ -14,7 +23,7 @@ export async function login(
   username: string,
   password: string
 ): Promise<LoginResponse> {
-  const response = await api.post<LoginResponse>(
+  const response = await authApi.post<LoginResponse>(
     "/auth/token/",
     {
       username,
@@ -32,7 +41,7 @@ export async function refreshAccessToken(): Promise<string> {
     throw new Error("Refresh token not found");
   }
 
-  const response = await api.post<RefreshResponse>(
+  const response = await authApi.post<RefreshResponse>(
     "/auth/token/refresh/",
     {
       refresh: refreshToken,
@@ -40,7 +49,6 @@ export async function refreshAccessToken(): Promise<string> {
   );
 
   const newAccessToken = response.data.access;
-
   tokenService.saveAccessToken(newAccessToken);
 
   return newAccessToken;
@@ -52,7 +60,5 @@ export function saveTokens(tokens: LoginResponse) {
 
 export function logout() {
   tokenService.clearTokens();
-  window.dispatchEvent(
-    new Event("auth-change")
-  );
+  window.dispatchEvent(new Event("auth-change"));
 }

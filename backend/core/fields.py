@@ -28,11 +28,8 @@ class JalaliDateTimeField(
             persian_digits
         )
 
-        super().__init__(
-            *args,
-            read_only=True,
-            **kwargs,
-        )
+        kwargs["read_only"] = True
+        super().__init__(*args, **kwargs)
 
     def to_representation(
         self,

@@ -1,7 +1,9 @@
 from django.db import transaction
+from django.db.models import Sum, Q
+from django.db.models.functions import Coalesce
 from rest_framework.exceptions import ValidationError
 
-from .models import Cart, Order, OrderItem, CustomerTransaction, Payment, CashBox, CashBoxTransaction
+from .models import Cart, Order, OrderItem, OrderCancellation, CustomerTransaction, Payment, CashBox, CashBoxTransaction
 
 from products.models import Inventory
 from products.models import InventoryTransaction
@@ -249,7 +251,7 @@ class OrderService:
 
     @staticmethod
     @transaction.atomic
-    def change_status(order, new_status):
+    def change_status(order, new_status, user=None, reason=""):
         original_order = order
         order = Order.objects.select_for_update().get(pk=order.pk)
         old_status = order.status
@@ -297,12 +299,31 @@ class OrderService:
                         description=f"Cancel Order #{order.id}",
                     )
 
+            if user is not None:
+                OrderCancellation.objects.create(
+                    order=order, cancelled_by=user, reason=(reason or "").strip()
+                )
+
         order.status = new_status
         order.save(update_fields=["status", "updated_at"])
         # Keep the caller's instance in sync with the locked database instance.
         original_order.status = order.status
         original_order.updated_at = order.updated_at
         return original_order
+
+
+    @staticmethod
+    def cashbox_reconciliation(order):
+        cashbox_ids = list(order.payments.filter(cashbox_id__isnull=False).values_list("cashbox_id", flat=True).distinct())
+        result = []
+        for cashbox in CashBox.objects.filter(id__in=cashbox_ids, store=order.store).order_by("id"):
+            agg = CashBoxTransaction.objects.filter(cashbox=cashbox).aggregate(
+                received=Coalesce(Sum("amount", filter=Q(transaction_type__in=["receive", "deposit"])), Decimal("0")),
+                paid=Coalesce(Sum("amount", filter=Q(transaction_type__in=["payment", "withdraw"])), Decimal("0")),
+            )
+            ledger = agg["received"] - agg["paid"]
+            result.append({"cashbox_id":cashbox.id,"cashbox_name":cashbox.name,"balance":cashbox.balance,"ledger_balance":ledger,"difference":cashbox.balance-ledger,"is_balanced":cashbox.balance==ledger})
+        return result
 
 
 ## چاپ فاکتور ##
@@ -483,6 +504,8 @@ def build_invoice_pdf(order):
 
     status_map = {
         "pending": "در انتظار",
+        "confirmed": "تایید شده",
+        "paid": "پرداخت شده",
         "completed": "تکمیل شده",
         "cancelled": "لغو شده",
     }
@@ -738,6 +761,39 @@ def build_invoice_pdf(order):
     story.append(
         info_table
     )
+
+    if order.status == "cancelled":
+        cancelled_style = ParagraphStyle(
+            "InvoiceCancelledNotice",
+            parent=styles["Normal"],
+            fontName=FONT_NAME,
+            fontSize=13,
+            leading=18,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor("#B91C1C"),
+        )
+        cancelled_table = Table(
+            [[Paragraph(fa("این فاکتور لغو شده است"), cancelled_style)]],
+            colWidths=[186 * mm],
+        )
+        cancelled_table.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1.2, colors.HexColor("#B91C1C")),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(cancelled_table)
+        cancellation = getattr(order, "cancellation", None)
+        if cancellation:
+            audit_style = ParagraphStyle(
+                "InvoiceCancellationAudit", parent=styles["Normal"], fontName=FONT_NAME,
+                fontSize=9, leading=13, alignment=TA_RIGHT,
+            )
+            audit_text = (
+                f"لغوکننده: {cancellation.cancelled_by.username} | "
+                f"زمان لغو: {cancellation.cancelled_at} | "
+                f"علت: {cancellation.reason or 'ثبت نشده'}"
+            )
+            story.append(Paragraph(fa(audit_text), audit_style))
 
     story.append(
         Spacer(
@@ -1010,6 +1066,53 @@ def build_invoice_pdf(order):
     story.append(
         summary_table
     )
+
+    # ==================================================
+    # روش های پرداخت
+    # ==================================================
+
+    payment_method_map = {
+        "cash": "نقدی",
+        "card": "کارتخوان",
+        "credit": "حسابی",
+    }
+
+    payments = list(order.payments.all())
+    if payments:
+        payment_rows = [
+            [
+                Paragraph(fa("روش پرداخت"), total_label_style),
+                Paragraph(fa("مبلغ"), total_label_style),
+            ]
+        ]
+        for payment in payments:
+            payment_rows.append([
+                Paragraph(
+                    fa(payment_method_map.get(payment.method, payment.method)),
+                    small_style,
+                ),
+                Paragraph(money(payment.amount), small_style),
+            ])
+
+        payment_table = Table(
+            payment_rows,
+            colWidths=[120 * mm, 60 * mm],
+            repeatRows=1,
+        )
+        payment_table.setStyle(
+            TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#D1D5DB")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F3F4F6")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ])
+        )
+        story.append(Spacer(1, 4 * mm))
+        story.append(Paragraph(fa("جزئیات پرداخت"), total_label_style))
+        story.append(Spacer(1, 2 * mm))
+        story.append(payment_table)
 
     story.append(
         Spacer(
@@ -1364,6 +1467,37 @@ def build_thermal_receipt_pdf(order):
     story.append(
         header_table
     )
+
+    if order.status == "cancelled":
+        cancelled_style = ParagraphStyle(
+            "ThermalCancelledNotice",
+            parent=styles["Normal"],
+            fontName=FONT_NAME,
+            fontSize=11,
+            leading=14,
+            alignment=TA_CENTER,
+        )
+        cancelled_table = Table(
+            [[Paragraph(fa("*** این فاکتور لغو شده است ***"), cancelled_style)]],
+            colWidths=[66 * mm],
+        )
+        cancelled_table.setStyle(TableStyle([
+            ("BOX", (0, 0), (-1, -1), 1, colors.black),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(cancelled_table)
+        cancellation = getattr(order, "cancellation", None)
+        if cancellation:
+            audit_style = ParagraphStyle(
+                "ThermalCancellationAudit", parent=styles["Normal"], fontName=FONT_NAME,
+                fontSize=7.5, leading=10, alignment=TA_CENTER,
+            )
+            audit_text = (
+                f"لغوکننده: {cancellation.cancelled_by.username} | "
+                f"علت: {cancellation.reason or 'ثبت نشده'}"
+            )
+            story.append(Paragraph(fa(audit_text), audit_style))
 
     story.append(
         Spacer(

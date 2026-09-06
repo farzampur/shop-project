@@ -12,6 +12,7 @@ import Categories from "./pages/categories/Categories";
 import { StoreProvider } from "./contexts/StoreContext";
 import Purchases from "./pages/purchases/Purchases";
 import Sales from "./pages/sales/Sales";
+import Reports from "./pages/Reports";
 
 function App() {
   return (
@@ -104,7 +105,7 @@ function App() {
             path="/reports"
             element={
               <RoleRoute allowedRoles={ROUTE_ROLES.reports}>
-                <h2>گزارش‌ها</h2>
+                <Reports />
               </RoleRoute>
             }
           />

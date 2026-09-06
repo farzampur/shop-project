@@ -11,6 +11,7 @@ export interface Product {
   purchase_price?: string;
   sale_price?: string;
   is_active?: boolean;
+  inventory_quantity?: string | number | null;
 }
 
 export interface ProductWriteData {

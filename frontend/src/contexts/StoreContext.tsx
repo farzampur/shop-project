@@ -15,6 +15,7 @@ interface StoreContextType {
   user: CurrentUser | null;
   stores: Store[];
   activeStore: Store | null;
+  activeStoreId: number | null;
   activeRole: StoreRole | null;
   setActiveStore: (store: Store) => void;
   loading: boolean;
@@ -92,6 +93,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     user,
     stores,
     activeStore,
+    activeStoreId: activeStore?.id ?? null,
     activeRole: activeStore?.role ?? null,
     setActiveStore,
     loading,

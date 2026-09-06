@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal
 
-from .models import Cart, CartItem, Order, OrderItem, Product, Payment
+from .models import Cart, CartItem, Order, OrderItem, OrderCancellation, Product, Payment
 from .models import Expense, Customer, CustomerTransaction
 from .models import CashBox, CashBoxTransaction, CashTransfer
 
@@ -11,6 +11,13 @@ class CartItemSerializer(serializers.ModelSerializer):
 
     product_name = serializers.CharField(
         source="product.name",
+        read_only=True
+    )
+
+    purchase_price = serializers.DecimalField(
+        source="product.purchase_price",
+        max_digits=15,
+        decimal_places=2,
         read_only=True
     )
 
@@ -125,7 +132,6 @@ class CartSerializer(serializers.ModelSerializer):
             "username",
             "store",
             "store_name",
-            "store",
             "items",
             "total_before_discount",
             "total_discount",
@@ -203,7 +209,7 @@ class CartItemCreateSerializer(
 
         extra_kwargs = {
             "quantity": {
-                "min_value": 0.001
+                "min_value": Decimal("0.001")
             },
             "discount_percent": {
                 "min_value": 0,
@@ -253,7 +259,7 @@ class CartItemUpdateSerializer(serializers.ModelSerializer):
 
         extra_kwargs = {
             "quantity": {
-                "min_value": 0.001
+                "min_value": Decimal("0.001")
             },
             "discount_percent": {
                 "min_value": 0,
@@ -312,6 +318,15 @@ class PaymentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
+class OrderCancellationSerializer(serializers.ModelSerializer):
+    cancelled_by_username = serializers.CharField(source="cancelled_by.username", read_only=True)
+    cancelled_at = JalaliDateTimeField(with_time=True, read_only=True)
+    class Meta:
+        model = OrderCancellation
+        fields = ["id", "cancelled_by", "cancelled_by_username", "cancelled_at", "reason"]
+        read_only_fields = ["id", "cancelled_by", "cancelled_by_username", "cancelled_at"]
+
+
 class OrderSerializer(serializers.ModelSerializer):
 
     created_at = JalaliDateTimeField(
@@ -328,6 +343,8 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    cancellation = OrderCancellationSerializer(read_only=True)
+
     class Meta:
         model = Order
 
@@ -342,6 +359,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "payments",
             "customer",
             "customer_name",
+            "cancellation",
         ]
         
     customer_name = serializers.SerializerMethodField()
@@ -361,6 +379,7 @@ class OrderStatusSerializer(serializers.Serializer):
     status = serializers.ChoiceField(
         choices=["confirmed", "cancelled"]
     )
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
 
 
 class OrderPaySerializer(serializers.Serializer):

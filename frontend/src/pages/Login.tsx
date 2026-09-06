@@ -30,20 +30,10 @@ function Login() {
     try {
       const tokens = await login(username, password);
 
-	  console.log("TOKENS FROM LOGIN:", tokens);
 
   	  saveTokens(tokens);
 	  window.dispatchEvent(
 	    new Event("auth-change")
-	  );
-	  console.log(
-	    "ACCESS AFTER SAVE:",
-	    localStorage.getItem("access_token")
-	  );
-
-	  console.log(
-	    "REFRESH AFTER SAVE:",
-	    localStorage.getItem("refresh_token")
 	  );
 
       console.log("Login successful");
