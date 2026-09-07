@@ -10,6 +10,7 @@ from .views import (
     OrderViewSet,    
     SalesReportViewSet,
     DashboardView,
+    CashDayCloseView,
     ExpenseViewSet,
     CustomerViewSet,
     CustomerReportView,
@@ -113,6 +114,11 @@ urlpatterns = (
             "dashboard/",
             DashboardView.as_view(),
             name="dashboard",
+        ),
+        path(
+            "cash-day-close/",
+            CashDayCloseView.as_view(),
+            name="cash-day-close",
         ),
         path(
             "customer-report/",

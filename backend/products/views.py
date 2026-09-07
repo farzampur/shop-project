@@ -55,6 +55,7 @@ from .serializers import (
 from accounts.store_access import has_store_access, user_store_ids
 from accounts.permissions import StoreRolePermission
 from .permissions import InventoryPermission
+from core.audit import audit
 
 class CategoryViewSet(viewsets.ModelViewSet):
 
@@ -92,7 +93,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
         store = serializer.validated_data["store"]
 
         has_access = self.request.user.user_stores.filter(
-            store=store
+            store=store,
+            is_active=True
         ).exists()
 
         if not has_access:
@@ -112,7 +114,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
         )
 
         has_access = self.request.user.user_stores.filter(
-            store=store
+            store=store,
+            is_active=True
         ).exists()
 
         if not has_access:
@@ -188,7 +191,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             )
 
         has_access = self.request.user.user_stores.filter(
-            store_id=store_id
+            store_id=store_id,
+            is_active=True
         ).exists()
 
         if not has_access:
@@ -204,7 +208,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
 
         has_access = instance.category.store.store_users.filter(
-            user=self.request.user
+            user=self.request.user,
+            is_active=True
         ).exists()
 
         if not has_access:
@@ -310,6 +315,7 @@ class InventoryViewSet(viewsets.ModelViewSet):
             description=request.data.get("description", "تعدیل موجودی"),
         )
         return Response(InventorySerializer(inventory).data)
+        audit(user=request.user, action="adjust", model_name="Inventory", object_id=inventory.id, store=inventory.store, description=f"تعدیل موجودی {inventory.product.name}", metadata={"old": str(old_quantity), "new": str(new_quantity), "delta": str(delta)})
 
 
 class InventoryTransactionViewSet(
@@ -929,6 +935,7 @@ class PurchaseItemViewSet(
         # بررسی دسترسی کاربر به فروشگاه خرید
         has_access = self.request.user.user_stores.filter(
             store=purchase.store,
+            is_active=True,
             role__in={"manager", "warehouse"},
         ).exists()
 
@@ -2171,6 +2178,7 @@ class SupplierPaymentViewSet(
                 f"{supplier.name}"
             ),
         )
+        audit(user=self.request.user, action="payment", model_name="SupplierTransaction", object_id=supplier_tx.id, store=supplier.store, description=f"پرداخت به تأمین‌کننده {supplier.name}", metadata={"amount": str(amount), "cashbox": cashbox.id})
         
         
         
@@ -3266,6 +3274,7 @@ class PurchaseReturnViewSet(
         # کنترل دسترسی فروشگاه
         has_access = self.request.user.user_stores.filter(
             store=purchase.store,
+            is_active=True,
             role__in={"manager", "warehouse"},
         ).exists()
 

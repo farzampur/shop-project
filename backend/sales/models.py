@@ -672,3 +672,20 @@ class CashTransfer(
         )
 
         
+class CashDayClose(models.Model):
+    store = models.ForeignKey("core.Store", on_delete=models.PROTECT, related_name="cash_day_closes", verbose_name="فروشگاه")
+    cashbox = models.ForeignKey(CashBox, on_delete=models.PROTECT, related_name="day_closes", verbose_name="صندوق")
+    close_date = models.DateField(verbose_name="تاریخ کاری")
+    opening_balance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    expected_balance = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    counted_balance = models.DecimalField(max_digits=15, decimal_places=2)
+    difference = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    note = models.CharField(max_length=500, blank=True)
+    closed_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="cash_day_closes")
+    closed_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ["-close_date", "-id"]
+        constraints = [models.UniqueConstraint(fields=["cashbox", "close_date"], name="unique_cashbox_day_close")]
+        verbose_name = "بستن روزانه صندوق"
+        verbose_name_plural = "بستن روزانه صندوق‌ها"
+    def __str__(self): return f"{self.cashbox} - {self.close_date}"

@@ -19,7 +19,8 @@ def get_user_max_discount(user, store):
 
     user_store = UserStore.objects.filter(
         user=user,
-        store=store
+        store=store,
+        is_active=True
     ).first()
 
     if not user_store:
@@ -49,6 +50,7 @@ class CartPermission(BasePermission):
         if request.method == "GET":
             return UserStore.objects.filter(
                 user=request.user,
+                is_active=True,
                 role__in=self.ALLOWED_ROLES,
             ).exists()
 
@@ -57,6 +59,7 @@ class CartPermission(BasePermission):
             return UserStore.objects.filter(
                 user=request.user,
                 store_id=store_id,
+                is_active=True,
                 role__in=self.ALLOWED_ROLES,
             ).exists()
 
@@ -65,6 +68,7 @@ class CartPermission(BasePermission):
         if cart_id is not None:
             return UserStore.objects.filter(
                 user=request.user,
+                is_active=True,
                 role__in=self.ALLOWED_ROLES,
                 store__carts__id=cart_id,
             ).exists()
@@ -83,6 +87,7 @@ class CartPermission(BasePermission):
         return UserStore.objects.filter(
             user=request.user,
             store=store,
+            is_active=True,
             role__in=self.ALLOWED_ROLES,
         ).exists()
         

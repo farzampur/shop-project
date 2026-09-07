@@ -27,6 +27,8 @@ class UserStore(models.Model):
         verbose_name="فروشگاه"
     )
 
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,

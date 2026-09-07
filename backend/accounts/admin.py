@@ -8,8 +8,8 @@ UserStore._meta.verbose_name_plural = "دسترسی کاربران به فروش
 
 @admin.register(UserStore)
 class UserStoreAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "store", "role", "created_at")
-    list_filter = ("store", "role", "created_at")
+    list_display = ("id", "user", "store", "role", "is_active", "created_at")
+    list_filter = ("store", "role", "is_active", "created_at")
     search_fields = ("user__username", "user__first_name", "user__last_name", "store__name", "store__code")
     ordering = ("-id",)
     readonly_fields = ("created_at",)

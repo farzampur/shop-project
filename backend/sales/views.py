@@ -16,7 +16,7 @@ from accounts.models import UserStore
 from accounts.permissions import StoreRolePermission
 from accounts.store_access import has_store_access, require_store_access, user_store_ids
 from django.utils import timezone
-from .models import Cart, CartItem, Order, OrderItem, Expense, Customer
+from .models import Cart, CartItem, Order, OrderItem, Expense, Customer, CashDayClose
 from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer, Payment
 
 from django.http import FileResponse
@@ -47,6 +47,7 @@ from .serializers import (
 from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
 from products.models import Product, Inventory
+from core.audit import audit
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -398,12 +399,11 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
             raise_exception=True
         )
 
-        order = OrderService.change_status(
-            order,
-            serializer.validated_data["status"],
-            user=request.user,
-            reason=serializer.validated_data.get("reason", ""),
-        )
+        new_status = serializer.validated_data["status"]
+        reason = serializer.validated_data.get("reason", "")
+        order = OrderService.change_status(order, new_status, user=request.user, reason=reason)
+        if new_status == "cancelled":
+            audit(user=request.user, action="cancel", model_name="Order", object_id=order.id, store=order.store, description=f"لغو فروش #{order.id}", metadata={"reason": reason})
 
         payload = {"id": order.id, "status": order.status}
         if order.status == "cancelled":
@@ -539,6 +539,17 @@ class SalesReportViewSet(viewsets.ViewSet):
             c=getattr(o,"cancellation",None)
             data.append({"order_id":o.id,"store":o.store.name,"cancelled_by":c.cancelled_by.username if c else None,"cancelled_at":c.cancelled_at if c else o.updated_at,"reason":c.reason if c else "","amount":o.total_price})
         return Response(data)
+
+    @action(detail=False, methods=["get"], url_path="export-csv")
+    def export_csv(self, request):
+        from django.http import HttpResponse
+        rows = self._orders(request, False).select_related("store", "customer").order_by("created_at")
+        response = HttpResponse(content_type="text/csv; charset=utf-8-sig")
+        response["Content-Disposition"] = 'attachment; filename="sales-report.csv"'
+        response.write("شناسه,تاریخ,فروشگاه,مشتری,مبلغ\n")
+        for order in rows:
+            response.write(f"{order.id},{order.created_at:%Y-%m-%d %H:%M},{order.store.name},{order.customer or ''},{order.total_price}\n")
+        return response
 
     @action(detail=False, methods=["get"], url_path="cash-reconciliation")
     def cash_reconciliation(self, request):
@@ -713,6 +724,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
                 f"Expense: {expense.title}"
             )
         )
+        audit(user=self.request.user, action="create", model_name="Expense", object_id=expense.id, store=expense.store, description=f"ثبت هزینه: {expense.title}", metadata={"amount": str(expense.amount)})
         
 class CustomerViewSet(viewsets.ModelViewSet):
     allowed_roles_by_method = {
@@ -1218,13 +1230,8 @@ class CashBoxTransactionViewSet(
 
             cashbox.balance += amount
 
-        cashbox.save(
-            update_fields=[
-                "balance",
-                "updated_at",
-            ]
-        )
-
+        cashbox.save(update_fields=["balance", "updated_at"])
+        audit(user=self.request.user, action="payment" if transaction_type in {"payment", "withdraw"} else "create", model_name="CashBoxTransaction", object_id=transaction_obj.id, store=cashbox.store, description=f"تراکنش صندوق {cashbox.name}", metadata={"type": transaction_type, "amount": str(amount)})
         return transaction_obj
         
         
@@ -1778,7 +1785,41 @@ class CashTransferViewSet(
                 f"{from_cashbox.name}"
             )
         )
+        audit(user=self.request.user, action="payment", model_name="CashTransfer", object_id=transfer.id, store=from_cashbox.store, description=f"انتقال {amount} از {from_cashbox.name} به {to_cashbox.name}", metadata={"amount": str(amount)})
         
+
+class CashDayCloseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = CashDayClose.objects.filter(store_id__in=user_store_ids(request.user)).select_related("cashbox", "store", "closed_by")
+        store = request.query_params.get("store")
+        if store: qs = qs.filter(store_id=store)
+        return Response([{
+            "id": x.id, "store": x.store.name, "cashbox": x.cashbox.name, "close_date": x.close_date,
+            "opening_balance": x.opening_balance, "expected_balance": x.expected_balance,
+            "counted_balance": x.counted_balance, "difference": x.difference, "closed_by": x.closed_by.username,
+        } for x in qs[:100]])
+
+    @transaction.atomic
+    def post(self, request):
+        store_id = request.data.get("store")
+        cashbox_id = request.data.get("cashbox")
+        close_date = request.data.get("close_date") or timezone.localdate()
+        counted = Decimal(str(request.data.get("counted_balance", "0")))
+        if not store_id or not cashbox_id: raise ValidationError("فروشگاه و صندوق الزامی است.")
+        if not has_store_access(request.user, store_id, {"manager", "cashier"}): raise PermissionDenied("شما مجوز بستن صندوق را ندارید.")
+        cashbox = get_object_or_404(CashBox, id=cashbox_id, store_id=store_id)
+        if CashDayClose.objects.filter(cashbox=cashbox, close_date=close_date).exists(): raise ValidationError("این صندوق برای این روز قبلاً بسته شده است.")
+        tx = cashbox.transactions.filter(created_at__date=close_date)
+        net = tx.filter(transaction_type__in=["receive", "deposit"]).aggregate(v=Sum("amount"))["v"] or Decimal("0")
+        out = tx.filter(transaction_type__in=["payment", "withdraw"]).aggregate(v=Sum("amount"))["v"] or Decimal("0")
+        expected = cashbox.balance
+        opening = expected - net + out
+        obj = CashDayClose.objects.create(store=cashbox.store, cashbox=cashbox, close_date=close_date, opening_balance=opening, expected_balance=expected, counted_balance=counted, difference=counted-expected, note=request.data.get("note", ""), closed_by=request.user)
+        audit(user=request.user, action="close", model_name="CashDayClose", object_id=obj.id, store=cashbox.store, description=f"بستن صندوق {cashbox.name} در تاریخ {close_date}", metadata={"expected": str(expected), "counted": str(counted), "difference": str(obj.difference)})
+        return Response({"id": obj.id, "difference": obj.difference, "expected_balance": obj.expected_balance, "counted_balance": obj.counted_balance}, status=status.HTTP_201_CREATED)
+
 
 class InvoicePDFView(APIView):
 

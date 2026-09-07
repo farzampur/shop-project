@@ -1,68 +1,65 @@
-#from django.shortcuts import render
-from rest_framework import viewsets 
-from rest_framework.permissions import IsAuthenticated 
-from .models import Store
-from .serializers import StoreSerializer
-from rest_framework.exceptions import PermissionDenied
+from rest_framework import status, viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
+from .models import Store, AuditLog
+from .serializers import StoreSerializer, AuditLogSerializer
+from accounts.models import UserStore
+from accounts.store_access import user_store_ids
+from core.audit import audit
 
 
 class StoreViewSet(viewsets.ModelViewSet):
-
     serializer_class = StoreSerializer
-
-    permission_classes = [
-        IsAuthenticated,
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Store.objects.filter(
-            store_users__user=self.request.user
-        ).distinct()
+        if self.request.user.is_superuser:
+            return Store.objects.all().order_by("name")
+        return Store.objects.filter(id__in=user_store_ids(self.request.user), is_active=True).order_by("name")
 
-    def _is_manager(self, store=None):
-        user = self.request.user
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({"detail": "فقط مدیر سیستم می‌تواند شعبه جدید ایجاد کند."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        obj = serializer.save()
+        audit(user=request.user, action="create", model_name="Store", object_id=obj.id, description=f"ایجاد فروشگاه {obj.name}", store=obj, metadata={"code": obj.code})
+        return Response(self.get_serializer(obj).data, status=status.HTTP_201_CREATED)
 
-        if user.is_superuser:
-            return True
+    def update(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if not request.user.is_superuser:
+            relation = UserStore.objects.filter(user=request.user, store=obj, role="manager", is_active=True).first()
+            if relation is None:
+                return Response({"detail": "شما مدیر این فروشگاه نیستید."}, status=status.HTTP_403_FORBIDDEN)
+            if "is_active" in request.data and bool(request.data.get("is_active")) is False:
+                return Response({"detail": "مدیر شعبه نمی‌تواند شعبه را غیرفعال کند."}, status=status.HTTP_403_FORBIDDEN)
+        serializer = self.get_serializer(obj, data=request.data, partial=request.method == "PATCH")
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        audit(user=request.user, action="update", model_name="Store", object_id=updated.id, description=f"ویرایش فروشگاه {updated.name}", store=updated, metadata={"code": updated.code})
+        return Response(self.get_serializer(updated).data)
 
-        user_stores = user.user_stores.all()
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return Response({"detail": "فقط مدیر سیستم می‌تواند شعبه را حذف کند."}, status=status.HTTP_403_FORBIDDEN)
+        obj = self.get_object()
+        if UserStore.objects.filter(store=obj).exists():
+            return Response({"detail": "شعبه‌ای که کاربر یا سابقه دسترسی دارد قابل حذف نیست؛ آن را غیرفعال کنید."}, status=status.HTTP_400_BAD_REQUEST)
+        store_id, name = obj.id, obj.name
+        obj.delete()
+        audit(user=request.user, action="delete", model_name="Store", object_id=store_id, description=f"حذف فروشگاه {name}", store=None, metadata={"store_id": store_id})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
-        if store is not None:
-            return user_stores.filter(
-                store=store,
-                role="manager"
-            ).exists()
 
-        return user_stores.filter(
-            role="manager"
-        ).exists()
-
-    def perform_create(self, serializer):
-
-        if not self._is_manager():
-            raise PermissionDenied(
-                "فقط مدیر فروشگاه می‌تواند فروشگاه ایجاد کند."
-            )
-
-        serializer.save()
-
-    def perform_update(self, serializer):
-
-        store = self.get_object()
-
-        if not self._is_manager(store):
-            raise PermissionDenied(
-                "فقط مدیر این فروشگاه می‌تواند اطلاعات آن را ویرایش کند."
-            )
-
-        serializer.save()
-
-    def perform_destroy(self, instance):
-
-        if not self._is_manager(instance):
-            raise PermissionDenied(
-                "فقط مدیر این فروشگاه می‌تواند آن را حذف کند."
-            )
-
-        instance.delete()
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        qs = AuditLog.objects.filter(store_id__in=user_store_ids(self.request.user)).select_related("user", "store")
+        store = self.request.query_params.get("store")
+        action = self.request.query_params.get("action")
+        if store: qs = qs.filter(store_id=store)
+        if action: qs = qs.filter(action=action)
+        return qs[:500]

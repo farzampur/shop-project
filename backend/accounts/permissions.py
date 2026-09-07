@@ -53,7 +53,7 @@ def get_store_from_request(request, view=None):
 def get_user_store_role(user, store_id):
     if user.is_superuser:
         return "manager"
-    relation = UserStore.objects.filter(user=user, store_id=store_id).first()
+    relation = UserStore.objects.filter(user=user, store_id=store_id, is_active=True).first()
     return relation.role if relation else None
 
 
@@ -71,11 +71,11 @@ class StoreRolePermission(BasePermission):
             allowed_roles_by_method = getattr(view, "allowed_roles_by_method", None)
             if allowed_roles_by_method is not None:
                 allowed_roles = allowed_roles_by_method.get(request.method, set())
-                return request.user.user_stores.filter(role__in=allowed_roles).exists()
+                return request.user.user_stores.filter(role__in=allowed_roles, is_active=True).exists()
 
             allowed_roles = getattr(view, "allowed_roles", None)
             if allowed_roles is not None:
-                return request.user.user_stores.filter(role__in=allowed_roles).exists() and (
+                return request.user.user_stores.filter(role__in=allowed_roles, is_active=True).exists() and (
                     request.method in getattr(
                         view, "allowed_methods", {"GET", "POST", "PUT", "PATCH", "DELETE"}
                     )
@@ -127,8 +127,8 @@ class StoreUserPermission(BasePermission):
             return True
         store_id = get_store_from_request(request, view)
         if store_id is None:
-            return request.user.user_stores.filter(role="manager").exists()
-        return request.user.user_stores.filter(store_id=store_id, role="manager").exists()
+            return request.user.user_stores.filter(role="manager", is_active=True).exists()
+        return request.user.user_stores.filter(store_id=store_id, role="manager", is_active=True).exists()
 
 
 class InventoryPermission(BasePermission):
@@ -140,7 +140,7 @@ class InventoryPermission(BasePermission):
         store_id = get_store_from_request(request, view)
         if store_id is None:
             return request.method == "GET"
-        qs = request.user.user_stores.filter(store_id=store_id)
+        qs = request.user.user_stores.filter(store_id=store_id, is_active=True)
         if request.method == "GET":
             return qs.exists()
         if request.method in {"POST", "PUT", "PATCH"}:

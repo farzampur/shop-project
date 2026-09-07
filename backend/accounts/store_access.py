@@ -12,7 +12,7 @@ def user_store_ids(user):
 def has_store_access(user, store_id, roles=None):
     if user.is_superuser:
         return True
-    qs = user.user_stores.filter(store_id=store_id)
+    qs = user.user_stores.filter(store_id=store_id, is_active=True)
     if roles:
         qs = qs.filter(role__in=roles)
     return qs.exists()
