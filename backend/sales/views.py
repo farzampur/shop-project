@@ -425,10 +425,17 @@ class SalesReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def _orders(self, request, include_cancelled=True):
-        qs = Order.objects.filter(store_id__in=user_store_ids(request.user))
+        allowed_store_ids = set(user_store_ids(request.user))
+        qs = Order.objects.filter(store_id__in=allowed_store_ids)
         store_id = request.query_params.get("store")
         if store_id:
-            qs = qs.filter(store_id=store_id)
+            try:
+                store_id_int = int(store_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+            if store_id_int not in allowed_store_ids:
+                raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+            qs = qs.filter(store_id=store_id_int)
         start_date = request.query_params.get("start_date")
         end_date = request.query_params.get("end_date")
         if start_date:
@@ -444,6 +451,45 @@ class SalesReportViewSet(viewsets.ViewSet):
     def list(self, request):
         rows = self._orders(request, False).annotate(day=TruncDate("created_at")).values("day").annotate(order_count=Count("id"), total_sales=Sum("total_price")).order_by("-day")
         return Response(rows)
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        orders = self._orders(request, False)
+        cancelled = self._orders(request, True).filter(status="cancelled")
+        sales = orders.aggregate(
+            total=Coalesce(Sum("total_price"), Decimal("0.00"), output_field=DecimalField()),
+            before_discount=Coalesce(Sum("total_before_discount"), Decimal("0.00"), output_field=DecimalField()),
+            discount=Coalesce(Sum("total_discount"), Decimal("0.00"), output_field=DecimalField()),
+        )
+        profit_rows = OrderItem.objects.filter(order__in=orders).aggregate(
+            cost=Coalesce(
+                Sum(F("quantity") * F("purchase_price")),
+                Decimal("0.00"),
+                output_field=DecimalField(max_digits=18, decimal_places=2),
+            ),
+        )
+        payment_rows = Payment.objects.filter(order__in=orders).values("method").annotate(
+            amount=Coalesce(Sum("amount"), Decimal("0.00"), output_field=DecimalField())
+        )
+        payment_map = {row["method"]: row["amount"] for row in payment_rows}
+        cancelled_total = cancelled.aggregate(
+            total=Coalesce(Sum("total_price"), Decimal("0.00"), output_field=DecimalField())
+        )["total"]
+        total_sales = sales["total"]
+        total_cost = profit_rows["cost"]
+        return Response({
+            "order_count": orders.count(),
+            "sales": total_sales,
+            "before_discount": sales["before_discount"],
+            "discount": sales["discount"],
+            "cost": total_cost,
+            "gross_profit": total_sales - total_cost,
+            "cancelled_count": cancelled.count(),
+            "cancelled_sales": cancelled_total,
+            "cash": payment_map.get("cash", Decimal("0.00")),
+            "card": payment_map.get("card", Decimal("0.00")),
+            "credit": payment_map.get("credit", Decimal("0.00")),
+        })
 
     @action(detail=False, methods=["get"])
     def monthly(self, request):
