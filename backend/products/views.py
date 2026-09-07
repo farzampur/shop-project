@@ -288,6 +288,30 @@ class InventoryViewSet(viewsets.ModelViewSet):
         serializer.save()
         
 
+    @action(detail=True, methods=["post"], url_path="adjust")
+    @transaction.atomic
+    def adjust(self, request, pk=None):
+        inventory = self.get_object()
+        if not has_store_access(request.user, inventory.store_id, {"manager", "warehouse"}):
+            raise PermissionDenied("شما مجوز تعدیل موجودی را ندارید.")
+        try:
+            new_quantity = Decimal(str(request.data.get("quantity")))
+        except Exception:
+            raise ValidationError("موجودی جدید نامعتبر است.")
+        if new_quantity < 0:
+            raise ValidationError("موجودی نمی‌تواند منفی باشد.")
+        old_quantity = inventory.quantity
+        delta = new_quantity - old_quantity
+        inventory.quantity = new_quantity
+        inventory.save(update_fields=["quantity", "updated_at"])
+        InventoryTransaction.objects.create(
+            product=inventory.product, store=inventory.store,
+            transaction_type="adjustment", quantity=delta,
+            description=request.data.get("description", "تعدیل موجودی"),
+        )
+        return Response(InventorySerializer(inventory).data)
+
+
 class InventoryTransactionViewSet(
     viewsets.ReadOnlyModelViewSet
 ):
@@ -2027,7 +2051,7 @@ class SupplierPaymentViewSet(
         purchase_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -2040,7 +2064,7 @@ class SupplierPaymentViewSet(
         payment_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -2053,7 +2077,7 @@ class SupplierPaymentViewSet(
         return_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -2185,7 +2209,7 @@ class SupplierBalanceView(APIView):
         purchase_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -2198,7 +2222,7 @@ class SupplierBalanceView(APIView):
         payment_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -2211,7 +2235,7 @@ class SupplierBalanceView(APIView):
         return_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -2285,7 +2309,7 @@ class SupplierLedgerView(APIView):
         transactions = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
             )
             .order_by(
@@ -2734,7 +2758,7 @@ class SupplierPaymentReportView(APIView):
         transactions = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 transaction_type="payment",
             )
         )
@@ -3425,7 +3449,7 @@ class SupplierSettleView(APIView):
         purchase_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="purchase",
             )
@@ -3438,7 +3462,7 @@ class SupplierSettleView(APIView):
         payment_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="payment",
             )
@@ -3451,7 +3475,7 @@ class SupplierSettleView(APIView):
         return_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="return",
             )
@@ -3464,7 +3488,7 @@ class SupplierSettleView(APIView):
         adjustment_total = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(request.user),
+                supplier__store_id__in=user_store_ids(self.request.user),
                 supplier=supplier,
                 transaction_type="adjustment",
             )

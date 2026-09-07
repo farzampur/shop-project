@@ -1,50 +1,6 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Virtual Environment
-venv/
-.venv/
-env/
-myenv/
-
-# Django
-*.log
-db.sqlite3
-db.sqlite3-journal
-
-# Environment variables
+*.sqlite3
 .env
-.env.*
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Python cache
-.pytest_cache/
-.mypy_cache/
-
-# Coverage
-.coverage
-htmlcov/
-
-# Media
-media/
-
-# Static collected files
-staticfiles/
-
-*.txt
-data.json
-db_sqlite_backup_*.sqlite3
-shop_db_backup.dump
-
-installer/
-release/
-query
+frontend/node_modules/
+frontend/dist/

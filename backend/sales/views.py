@@ -450,7 +450,7 @@ class SalesReportViewSet(viewsets.ViewSet):
 
     def list(self, request):
         rows = self._orders(request, False).annotate(day=TruncDate("created_at")).values("day").annotate(order_count=Count("id"), total_sales=Sum("total_price")).order_by("-day")
-        return Response(rows)
+        return Response(list(rows))
 
     @action(detail=False, methods=["get"])
     def summary(self, request):
@@ -564,88 +564,84 @@ class DashboardView(APIView):
     ]
 
     def get(self, request):
+        today = timezone.localdate()
+        allowed_store_ids = set(user_store_ids(request.user))
 
-        today = timezone.now().date()
-        store_ids = user_store_ids(request.user)
-        today_orders = Order.objects.filter(
-            store_id__in=store_ids,
-            created_at__date=today,
-        ).exclude(status="cancelled")
-        month_orders = Order.objects.filter(
-            store_id__in=store_ids,
-            created_at__year=today.year,
-            created_at__month=today.month,
-        ).exclude(status="cancelled")
+        store_id = request.query_params.get("store")
+        if store_id:
+            try:
+                selected_store_id = int(store_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+            if selected_store_id not in allowed_store_ids:
+                raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+            store_ids = {selected_store_id}
+        else:
+            store_ids = allowed_store_ids
 
-        today_sales = (
-            today_orders.aggregate(
-                total=Sum("total_price")
-            )["total"]
-            or 0
+        today_orders = (
+            Order.objects
+            .filter(store_id__in=store_ids, created_at__date=today)
+            .exclude(status="cancelled")
+        )
+        month_orders = (
+            Order.objects
+            .filter(
+                store_id__in=store_ids,
+                created_at__year=today.year,
+                created_at__month=today.month,
+            )
+            .exclude(status="cancelled")
         )
 
-        month_sales = (
-            month_orders.aggregate(
-                total=Sum("total_price")
-            )["total"]
-            or 0
-        )
+        today_sales = today_orders.aggregate(total=Sum("total_price"))["total"] or Decimal("0.00")
+        month_sales = month_orders.aggregate(total=Sum("total_price"))["total"] or Decimal("0.00")
 
         total_products = Product.objects.filter(category__store_id__in=store_ids).count()
         total_inventory = (
-            Inventory.objects.filter(store_id__in=store_ids).aggregate(
-                total=Sum("quantity")
-            )["total"]
-            or 0
+            Inventory.objects.filter(store_id__in=store_ids)
+            .aggregate(total=Sum("quantity"))["total"]
+            or Decimal("0.00")
         )
+        low_stock_products = Inventory.objects.filter(
+            store_id__in=store_ids,
+            quantity__lte=F("min_quantity"),
+        ).count()
 
-        low_stock_products = (
-            Inventory.objects.filter(store_id__in=store_ids, quantity__lt=10).count()
+        month_items = (
+            OrderItem.objects
+            .filter(order__in=month_orders)
+            .select_related("product")
         )
-        
-        total_sales_amount = Decimal("0")
-        total_cost_amount = Decimal("0")
-
-        for item in OrderItem.objects.filter(order__store_id__in=store_ids).exclude(order__status="cancelled").select_related("product"):
-            total_sales_amount += item.total_price
-            total_cost_amount += (
-                item.quantity *
-                item.purchase_price
-            )
-
-        total_profit = (
-            total_sales_amount -
-            total_cost_amount
+        month_cost = sum(
+            (item.quantity * item.purchase_price for item in month_items),
+            Decimal("0.00"),
         )
+        gross_profit = month_sales - month_cost
 
         expense_total = (
-            Expense.objects.filter(
-                store_id__in=user_store_ids(request.user)
-            ).aggregate(
-                total=Sum("amount")
-            )["total"]
-            or 0
+            Expense.objects
+            .filter(
+                store_id__in=store_ids,
+                expense_date__year=today.year,
+                expense_date__month=today.month,
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
         )
 
-        net_profit = (
-            total_profit -
-            expense_total
-        )
-
-        return Response(
-            {
-                "today_orders": today_orders.count(),
-                "month_orders": month_orders.count(),
-                "today_sales": today_sales,
-                "month_sales": month_sales,                
-                "total_products": total_products,
-                "total_inventory": total_inventory,
-                "low_stock_products": low_stock_products,                
-                "total_profit": total_profit,                
-                "expense_total": expense_total,
-                "net_profit": net_profit,                
-            }
-        )
+        return Response({
+            "today_orders": today_orders.count(),
+            "month_orders": month_orders.count(),
+            "today_sales": today_sales,
+            "month_sales": month_sales,
+            "total_products": total_products,
+            "total_inventory": total_inventory,
+            "low_stock_products": low_stock_products,
+            "total_profit": gross_profit,
+            "expense_total": expense_total,
+            "net_profit": gross_profit - expense_total,
+        })
 
 class ExpenseViewSet(viewsets.ModelViewSet):
 

@@ -22,6 +22,7 @@ import PeopleIcon from "@mui/icons-material/People";
 import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import CategoryIcon from "@mui/icons-material/Category";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../contexts/StoreContext";
@@ -42,6 +43,7 @@ const menuItems: readonly MenuItem[] = [
   { key: "products", title: "محصولات", path: "/products", icon: <InventoryIcon /> },
   { key: "inventory", title: "موجودی", path: "/inventory", icon: <InventoryIcon /> },
   { key: "purchases", title: "خرید", path: "/purchases", icon: <ShoppingCartIcon /> },
+  { key: "suppliers", title: "تأمین‌کنندگان", path: "/suppliers", icon: <LocalShippingIcon /> },
   { key: "sales", title: "فروش", path: "/sales", icon: <PointOfSaleIcon /> },
   { key: "customers", title: "مشتریان", path: "/customers", icon: <PeopleIcon /> },
   { key: "cashbox", title: "صندوق", path: "/cashbox", icon: <AccountBalanceIcon /> },

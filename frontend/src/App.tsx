@@ -11,8 +11,11 @@ import Inventory from "./pages/inventory/Inventory";
 import Categories from "./pages/categories/Categories";
 import { StoreProvider } from "./contexts/StoreContext";
 import Purchases from "./pages/purchases/Purchases";
+import Suppliers from "./pages/suppliers/Suppliers";
 import Sales from "./pages/sales/Sales";
 import Reports from "./pages/Reports";
+import Customers from "./pages/customers/Customers";
+import Cashbox from "./pages/cashbox/Cashbox";
 
 function App() {
   return (
@@ -75,6 +78,15 @@ function App() {
           />
 
           <Route
+            path="/suppliers"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.suppliers}>
+                <Suppliers />
+              </RoleRoute>
+            }
+          />
+
+          <Route
             path="/sales"
             element={
               <RoleRoute allowedRoles={ROUTE_ROLES.sales}>
@@ -87,7 +99,7 @@ function App() {
             path="/customers"
             element={
               <RoleRoute allowedRoles={ROUTE_ROLES.customers}>
-                <h2>مشتریان</h2>
+                <Customers />
               </RoleRoute>
             }
           />
@@ -96,7 +108,7 @@ function App() {
             path="/cashbox"
             element={
               <RoleRoute allowedRoles={ROUTE_ROLES.cashbox}>
-                <h2>صندوق</h2>
+                <Cashbox />
               </RoleRoute>
             }
           />

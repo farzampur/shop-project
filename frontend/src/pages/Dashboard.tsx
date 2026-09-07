@@ -1,48 +1,6 @@
-import { useEffect } from "react";
-import { Box, Paper, Typography } from "@mui/material";
-import { listProducts } from "../services/productService";
-import { useStore } from "../contexts/StoreContext";
-
-
-function Dashboard() {
-  const { activeStore } = useStore();
-
-  useEffect(() => {
-    if (!activeStore) return;
-    void listProducts(activeStore.id)
-      .then((products) => console.log("PRODUCTS API SUCCESS:", products))
-      .catch((error) => console.error("PRODUCTS API ERROR:", error));
-  }, [activeStore]);
-  return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        p: 4,
-        direction: "rtl",
-      }}
-    >
-      <Typography
-        variant="h4"
-        sx={{
-          textAlign: "right",
-          mb: 3,
-        }}
-      >
-        داشبورد فروشگاه
-      </Typography>
-
-      <Paper
-        elevation={2}
-        sx={{
-          p: 3,
-        }}
-      >
-        <Typography>
-          به سیستم مدیریت فروشگاه خوش آمدید.
-        </Typography>
-      </Paper>
-    </Box>
-  );
-}
-
-export default Dashboard;
+import { useEffect,useState } from "react";
+import { Alert,Box,Card,CardContent,CircularProgress,Grid,Stack,Typography } from "@mui/material";
+import { useStore } from "../contexts/StoreContext"; import api from "../services/api";
+interface DashboardData{today_orders:number;month_orders:number;today_sales:string|number;month_sales:string|number;total_products:number;total_inventory:string|number;low_stock_products:number;total_profit:string|number;expense_total:string|number;net_profit:string|number}
+const money=(v:any)=>Number(v||0).toLocaleString("fa-IR");
+export default function Dashboard(){const{activeStore}=useStore();const[data,setData]=useState<DashboardData|null>(null);const[error,setError]=useState("");const[loading,setLoading]=useState(false);useEffect(()=>{if(!activeStore){setData(null);return}setLoading(true);setError("");void api.get<DashboardData>("/sales/dashboard/",{params:{store:activeStore.id}}).then(r=>setData(r.data)).catch(e=>setError(e?.response?.data?.detail||"خطا در دریافت داشبورد")).finally(()=>setLoading(false))},[activeStore?.id]);if(!activeStore)return <Alert severity="warning">ابتدا فروشگاه را انتخاب کنید.</Alert>;if(loading&&!data)return <Box sx={{display:"grid",placeItems:"center",minHeight:300}}><CircularProgress/></Box>;const cards=[['فروش امروز',money(data?.today_sales)],['فروش ماه',money(data?.month_sales)],['سود ناخالص',money(data?.total_profit)],['هزینه‌ها',money(data?.expense_total)],['سود خالص',money(data?.net_profit)],['تعداد فاکتور ماه',data?.month_orders||0],['تعداد کالا',data?.total_products||0],['کالای کم‌موجودی',data?.low_stock_products||0]];return <Box dir="rtl"><Typography variant="h4" sx={{fontWeight:700,mb:1}}>داشبورد مدیریتی</Typography><Typography color="text.secondary" sx={{mb:3}}>نمای کلی عملکرد {activeStore.name}</Typography>{error&&<Alert severity="error" sx={{mb:2}}>{error}</Alert>}<Grid container spacing={2}>{cards.map(([title,value])=><Grid key={String(title)} size={{xs:12,sm:6,md:3}}><Card sx={{height:"100%"}}><CardContent><Typography color="text.secondary" variant="body2">{title}</Typography><Typography variant="h5" sx={{fontWeight:700,mt:1}}>{value}</Typography></CardContent></Card></Grid>)}</Grid><Stack direction={{xs:"column",md:"row"}} spacing={2} sx={{mt:2}}><Card sx={{flex:1}}><CardContent><Typography variant="h6">موجودی</Typography><Typography sx={{mt:1}}>تعداد موجودی: {money(data?.total_inventory)} واحد</Typography></CardContent></Card><Card sx={{flex:1}}><CardContent><Typography variant="h6">فروش امروز</Typography><Typography sx={{mt:1}}>تعداد فاکتور: {data?.today_orders||0}</Typography></CardContent></Card></Stack></Box>}

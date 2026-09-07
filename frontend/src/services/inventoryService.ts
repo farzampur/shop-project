@@ -61,3 +61,15 @@ export async function updateInventoryMinimum(
   );
   return response.data;
 }
+
+export async function adjustInventory(
+  id: number,
+  quantity: string,
+  description?: string,
+): Promise<InventoryItem> {
+  const response = await api.post<InventoryItem>(
+    `/products/inventory/${id}/adjust/`,
+    { quantity, description: description || "" },
+  );
+  return response.data;
+}
