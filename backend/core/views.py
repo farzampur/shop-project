@@ -1,4 +1,5 @@
 from rest_framework import status, viewsets
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -63,3 +64,25 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         if store: qs = qs.filter(store_id=store)
         if action: qs = qs.filter(action=action)
         return qs[:500]
+
+
+class HealthCheckView(APIView):
+    """Minimal unauthenticated liveness/readiness endpoint for deployment checks."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        from django.db import connection
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+        except Exception:
+            return Response(
+                {"status": "error", "database": "unavailable"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        return Response({"status": "ok", "database": "ok"}, status=status.HTTP_200_OK)

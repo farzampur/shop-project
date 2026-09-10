@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import secrets
 
 from dotenv import load_dotenv
 
@@ -26,21 +27,41 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-(k73h0bemwb*9v#5#6^&uu9ep15k&-@h!73$c7_ca+!gv0k8&u'
+# Development may generate an ephemeral key; production must provide SECRET_KEY.
+DEBUG = os.getenv("DJANGO_DEBUG", "1").strip().lower() in {"1", "true", "yes", "on"}
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    if not DEBUG:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured("SECRET_KEY must be set when DJANGO_DEBUG=0")
+    SECRET_KEY = "dev-" + secrets.token_urlsafe(48)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "192.168.1.100",  # IP سیستم خودت
-]
+def _env_list(name, default=""):
+    return [item.strip() for item in os.getenv(name, default).split(",") if item.strip()]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+
+ALLOWED_HOSTS = _env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
+CORS_ALLOWED_ORIGINS = _env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+)
+CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")
+
+# HTTPS hardening is secure-by-default in production and HTTP-friendly in development.
+def _env_bool(name, default):
+    return os.getenv(name, "1" if default else "0").strip().lower() in {"1", "true", "yes", "on"}
+
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", not DEBUG)
+SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", not DEBUG)
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "1" if not DEBUG else "0").strip().lower() in {"1", "true", "yes", "on"}
+SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "1" if not DEBUG else "0").strip().lower() in {"1", "true", "yes", "on"}
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("SECURE_PROXY_SSL_HEADER", not DEBUG) else None
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "same-origin")
 
 # Application definition
 
@@ -101,7 +122,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.getenv("DB_NAME", "shop_db"),
         "USER": os.getenv("DB_USER", "postgres"),
-        "PASSWORD": os.getenv("DB_PASSWORD", "123456"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "127.0.0.1"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
@@ -153,11 +174,20 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
-MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
+EMAIL_CONFIG = {
+    'BACKEND': os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'),
+    'HOST': os.getenv('EMAIL_HOST', ''),
+    'PORT': int(os.getenv('EMAIL_PORT', '25')),
+    'USERNAME': os.getenv('EMAIL_HOST_USER', ''),
+    'PASSWORD': os.getenv('EMAIL_HOST_PASSWORD', ''),
+    'USE_TLS': os.getenv('EMAIL_USE_TLS', '0').strip().lower() in {'1', 'true', 'yes', 'on'},
 }
+EMAIL_BACKEND = EMAIL_CONFIG['BACKEND']
+EMAIL_HOST = EMAIL_CONFIG['HOST']
+EMAIL_PORT = EMAIL_CONFIG['PORT']
+EMAIL_HOST_USER = EMAIL_CONFIG['USERNAME']
+EMAIL_HOST_PASSWORD = EMAIL_CONFIG['PASSWORD']
+EMAIL_USE_TLS = EMAIL_CONFIG['USE_TLS']
 
 
 

@@ -171,12 +171,16 @@ class InventoryTransaction(models.Model):
     TYPE_SALE = "sale"
     TYPE_RETURN = "return"
     TYPE_ADJUSTMENT = "adjustment"
+    TYPE_TRANSFER_OUT = "transfer_out"
+    TYPE_TRANSFER_IN = "transfer_in"
 
     TRANSACTION_TYPES = [
         (TYPE_PURCHASE, "Purchase"),
         (TYPE_SALE, "Sale"),
         (TYPE_RETURN, "Return"),
         (TYPE_ADJUSTMENT, "Adjustment"),
+        (TYPE_TRANSFER_OUT, "Transfer Out"),
+        (TYPE_TRANSFER_IN, "Transfer In"),
     ]
 
     product = models.ForeignKey(

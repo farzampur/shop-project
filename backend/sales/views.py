@@ -46,7 +46,7 @@ from .serializers import (
 
 from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
-from products.models import Product, Inventory
+from products.models import Product, Inventory, SupplierTransaction
 from core.audit import audit
 from products.pricing import get_effective_sale_price
 
@@ -564,6 +564,92 @@ class SalesReportViewSet(viewsets.ViewSet):
             response.write(f"{order.id},{order.created_at:%Y-%m-%d %H:%M},{order.store.name},{order.customer or ''},{order.total_price}\n")
         return response
 
+    @action(detail=False, methods=["get"])
+    def store_comparison(self, request):
+        if not any(has_store_access(request.user, sid, {"manager"}) for sid in user_store_ids(request.user)):
+            raise PermissionDenied("مشاهده مقایسه فروشگاه‌ها فقط برای مدیر مجاز است.")
+        orders = self._orders(request, False)
+        rows = orders.values("store_id", "store__name").annotate(
+            order_count=Count("id"),
+            total_sales=Coalesce(Sum("total_price"), Decimal("0.00"), output_field=DecimalField()),
+            total_discount=Coalesce(Sum("total_discount"), Decimal("0.00"), output_field=DecimalField()),
+        ).order_by("-total_sales", "store__name")
+        result = []
+        for row in rows:
+            cost = OrderItem.objects.filter(order__in=orders.filter(store_id=row["store_id"])).aggregate(
+                value=Coalesce(Sum(F("quantity") * F("purchase_price")), Decimal("0.00"), output_field=DecimalField())
+            )["value"]
+            result.append({**row, "cost": cost, "gross_profit": row["total_sales"] - cost})
+        return Response(result)
+
+    @action(detail=False, methods=["get"])
+    def seller_performance(self, request):
+        rows = self._orders(request, False).values(
+            "user_id", "user__username", "store_id", "store__name"
+        ).annotate(
+            order_count=Count("id"),
+            total_sales=Coalesce(Sum("total_price"), Decimal("0.00"), output_field=DecimalField()),
+        ).order_by("-total_sales", "user__username")[:50]
+        return Response(list(rows))
+
+    @action(detail=False, methods=["get"])
+    def inventory_overview(self, request):
+        store_ids = set(user_store_ids(request.user))
+        store_id = request.query_params.get("store")
+        if store_id:
+            try:
+                sid = int(store_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+            if sid not in store_ids:
+                raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+            store_ids = {sid}
+        from core.models import Store
+        stores = {x.id: x.name for x in Store.objects.filter(id__in=store_ids)}
+        inv = Inventory.objects.filter(store_id__in=store_ids)
+        data = []
+        for sid in store_ids:
+            qs = inv.filter(store_id=sid)
+            # از نام فیلدهای مدل به‌عنوان alias aggregate استفاده نکنیم؛
+            # در Django جدید، alias ای مثل quantity می‌تواند هنگام resolve شدن
+            # عبارت بعدی به‌عنوان aggregate تفسیر شود و FieldError بدهد.
+            agg = qs.aggregate(
+                total_quantity=Coalesce(Sum("quantity"), Decimal("0.00"), output_field=DecimalField()),
+                total_inventory_value=Coalesce(
+                    Sum(F("quantity") * F("product__purchase_price")),
+                    Decimal("0.00"),
+                    output_field=DecimalField(),
+                ),
+            )
+            data.append({
+                "store_id": sid, "store_name": stores.get(sid, str(sid)),
+                "quantity": agg["total_quantity"], "inventory_value": agg["total_inventory_value"],
+                "low_stock_count": qs.filter(quantity__lte=F("min_quantity")).count(),
+                "product_count": qs.count(),
+            })
+        return Response(sorted(data, key=lambda x: x["inventory_value"], reverse=True))
+
+    @action(detail=False, methods=["get"])
+    def low_stock(self, request):
+        store_ids = set(user_store_ids(request.user))
+        store_id = request.query_params.get("store")
+        if store_id:
+            try:
+                sid = int(store_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+            if sid not in store_ids:
+                raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+            store_ids = {sid}
+        rows = Inventory.objects.filter(
+            store_id__in=store_ids, quantity__lte=F("min_quantity")
+        ).select_related("store", "product").order_by("quantity")[:50]
+        return Response([{
+            "store_id": x.store_id, "store_name": x.store.name,
+            "product_id": x.product_id, "product_name": x.product.name,
+            "quantity": x.quantity, "min_quantity": x.min_quantity,
+        } for x in rows])
+
     @action(detail=False, methods=["get"], url_path="cash-reconciliation")
     def cash_reconciliation(self, request):
         store_id=request.query_params.get("store")
@@ -870,6 +956,15 @@ class CustomerTransactionViewSet(viewsets.ModelViewSet):
         if tx_type == "sale" and not has_store_access(self.request.user, customer.store_id, {"manager"}):
             raise PermissionDenied("ثبت دستی بدهی فروش فقط برای مدیر فروشگاه مجاز است.")
         if tx_type == "payment":
+            customer = Customer.objects.select_for_update().get(pk=customer.pk)
+            sales_total = CustomerTransaction.objects.filter(
+                customer=customer, transaction_type="sale"
+            ).aggregate(total=Coalesce(Sum("amount"), Decimal("0.00")))["total"]
+            payment_total = CustomerTransaction.objects.filter(
+                customer=customer, transaction_type="payment"
+            ).aggregate(total=Coalesce(Sum("amount"), Decimal("0.00")))["total"]
+            if serializer.validated_data["amount"] > sales_total - payment_total:
+                raise ValidationError({"amount": "مبلغ دریافت بیشتر از مانده بدهی مشتری است."})
             cashbox_id = self.request.data.get("cashbox")
             if not cashbox_id:
                 raise ValidationError({"cashbox": "برای دریافت وجه صندوق الزامی است."})
@@ -1248,6 +1343,75 @@ class CashBoxTransactionViewSet(
         return transaction_obj
         
         
+class FinancialSummaryView(APIView):
+    """خلاصه یکپارچه مالی فروشگاه‌های مجاز کاربر."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        store_ids = user_store_ids(request.user)
+        orders = Order.objects.filter(store_id__in=store_ids, status="paid")
+        expenses = Expense.objects.filter(store_id__in=store_ids)
+        cashboxes = CashBox.objects.filter(store_id__in=store_ids)
+        customer_txs = CustomerTransaction.objects.filter(store_id__in=store_ids)
+        supplier_txs = SupplierTransaction.objects.filter(supplier__store_id__in=store_ids)
+
+        start_date = request.query_params.get("start_date")
+        end_date = request.query_params.get("end_date")
+        if start_date:
+            try:
+                datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError({"start_date": "فرمت صحیح YYYY-MM-DD است."})
+            orders = orders.filter(created_at__date__gte=start_date)
+            expenses = expenses.filter(expense_date__gte=start_date)
+            customer_txs = customer_txs.filter(created_at__date__gte=start_date)
+            supplier_txs = supplier_txs.filter(created_at__date__gte=start_date)
+        if end_date:
+            try:
+                datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise ValidationError({"end_date": "فرمت صحیح YYYY-MM-DD است."})
+            orders = orders.filter(created_at__date__lte=end_date)
+            expenses = expenses.filter(expense_date__lte=end_date)
+            customer_txs = customer_txs.filter(created_at__date__lte=end_date)
+            supplier_txs = supplier_txs.filter(created_at__date__lte=end_date)
+
+        sales = orders.aggregate(total=Coalesce(Sum("total_price"), Decimal("0.00")))['total']
+        cogs = OrderItem.objects.filter(order__in=orders).aggregate(
+            total=Coalesce(Sum(F("quantity") * F("purchase_price")), Decimal("0.00"))
+        )['total']
+        expense_total = expenses.aggregate(total=Coalesce(Sum("amount"), Decimal("0.00")))['total']
+        customer_receivable = customer_txs.filter(transaction_type="sale").aggregate(
+            total=Coalesce(Sum("amount"), Decimal("0.00"))
+        )['total'] - customer_txs.filter(transaction_type="payment").aggregate(
+            total=Coalesce(Sum("amount"), Decimal("0.00"))
+        )['total']
+        supplier_payable = supplier_txs.filter(transaction_type="purchase").aggregate(
+            total=Coalesce(Sum("amount"), Decimal("0.00"))
+        )['total'] - supplier_txs.filter(transaction_type__in=["payment", "return"]).aggregate(
+            total=Coalesce(Sum("amount"), Decimal("0.00"))
+        )['total'] + supplier_txs.filter(transaction_type="adjustment").aggregate(
+            total=Coalesce(Sum("amount"), Decimal("0.00"))
+        )['total']
+        cash_balance = cashboxes.aggregate(total=Coalesce(Sum("balance"), Decimal("0.00")))['total']
+        gross_profit = sales - cogs
+        net_profit = gross_profit - expense_total
+
+        return Response({
+            "sales": sales,
+            "cost_of_goods_sold": cogs,
+            "gross_profit": gross_profit,
+            "expenses": expense_total,
+            "net_profit": net_profit,
+            "customer_receivable": customer_receivable,
+            "supplier_payable": supplier_payable,
+            "cash_balance": cash_balance,
+            "order_count": orders.count(),
+            "filters": {"start_date": start_date, "end_date": end_date},
+        })
+
+
 class FinancialReportView(
     APIView
 ):
@@ -1726,8 +1890,18 @@ class CashTransferViewSet(
         if not has_store_access(self.request.user, from_cashbox.store_id, {"manager", "cashier"}):
             raise PermissionDenied("شما مجوز انتقال صندوق را ندارید.")
 
-        from_cashbox = CashBox.objects.select_for_update().get(pk=from_cashbox.pk)
-        to_cashbox = CashBox.objects.select_for_update().get(pk=to_cashbox.pk)
+        # Always acquire both cashbox locks in id order to avoid deadlocks
+        # when two opposite transfers are submitted concurrently.
+        cashboxes = {
+            cb.id: cb
+            for cb in CashBox.objects.select_for_update().filter(
+                id__in=[from_cashbox.pk, to_cashbox.pk]
+            ).order_by("id")
+        }
+        from_cashbox = cashboxes.get(from_cashbox.pk)
+        to_cashbox = cashboxes.get(to_cashbox.pk)
+        if not from_cashbox or not to_cashbox:
+            raise ValidationError("صندوق مبدا یا مقصد پیدا نشد.")
 
         if (
             from_cashbox.id ==

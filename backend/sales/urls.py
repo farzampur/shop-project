@@ -22,6 +22,7 @@ from .views import (
     CashBoxViewSet,
     CashBoxTransactionViewSet,
     FinancialReportView,
+    FinancialSummaryView,
     CashLedgerView,
     CashBoxBalanceReportView,
     DailyCashFlowReportView,
@@ -145,6 +146,11 @@ urlpatterns = (
             CustomerLedgerView.as_view(),
             name="customer-ledger",
         ), 
+        path(
+            "financial-summary/",
+            FinancialSummaryView.as_view(),
+            name="financial-summary",
+        ),
         path(
             "financial-report/",
             FinancialReportView.as_view(),

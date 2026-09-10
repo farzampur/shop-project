@@ -399,7 +399,9 @@ class InventoryReportViewSet(
                 "store"
             )
             .filter(
-                store__store_users__user=self.request.user
+                store__store_users__user=self.request.user,
+                store__store_users__is_active=True,
+                store__is_active=True,
             )
         )
 
@@ -603,7 +605,9 @@ class PurchaseViewSet(
                 "items__product"
             )
             .filter(
-                store__store_users__user=self.request.user
+                store__store_users__user=self.request.user,
+                store__store_users__is_active=True,
+                store__is_active=True,
             )
             .distinct()
             .order_by(
@@ -2060,6 +2064,7 @@ class SupplierPaymentViewSet(
                 "supplier"
             ]
         )
+        supplier = Supplier.objects.select_for_update().get(pk=supplier.pk)
 
         amount = (
             serializer.validated_data[
@@ -3463,7 +3468,7 @@ class SupplierSettleView(APIView):
         supplier_id
     ):
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
+            Supplier.objects.select_for_update().filter(store_id__in=user_store_ids(self.request.user)),
             id=supplier_id,
         )
 
@@ -3982,7 +3987,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
         qs = StockTransfer.objects.filter(
             Q(source_store__store_users__user=self.request.user, source_store__store_users__is_active=True)
             | Q(destination_store__store_users__user=self.request.user, destination_store__store_users__is_active=True)
-        ).select_related("source_store", "destination_store", "created_by", "approved_by").prefetch_related("items__product")
+        ).select_related("source_store", "destination_store", "created_by").prefetch_related("items__product")
         store_id = self.request.query_params.get("store")
         if store_id:
             qs = qs.filter(Q(source_store_id=store_id) | Q(destination_store_id=store_id))
@@ -3990,6 +3995,17 @@ class StockTransferViewSet(viewsets.ModelViewSet):
 
     def _can_source(self, store_id):
         return has_store_access(self.request.user, store_id, {"manager", "warehouse"})
+
+    def _locked_transfer(self, pk):
+        # تمام تغییر وضعیت‌ها روی خود رکورد انتقال lock می‌شوند تا دو درخواست
+        # هم‌زمان نتوانند یک انتقال را دوبار ارسال/دریافت کنند.
+        return (
+            StockTransfer.objects
+            .select_for_update()
+            .select_related("source_store", "destination_store", "created_by")
+            .prefetch_related("items__product")
+            .get(pk=pk)
+        )
 
     def perform_create(self, serializer):
         source_id = serializer.validated_data["source_store"].id
@@ -4018,6 +4034,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
         items = request.data.get("items") or []
         if not items:
             raise ValidationError({"items": "حداقل یک کالا برای انتقال لازم است."})
+        seen_products = set()
         with transaction.atomic():
             transfer = StockTransfer.objects.create(source_store=source, destination_store=destination, created_by=request.user, notes=notes)
             for raw in items:
@@ -4028,6 +4045,9 @@ class StockTransferViewSet(viewsets.ModelViewSet):
                     raise ValidationError({"items": "کالا یا مقدار انتقال نامعتبر است."})
                 if qty <= 0:
                     raise ValidationError({"items": "مقدار انتقال باید بیشتر از صفر باشد."})
+                if product.id in seen_products:
+                    raise ValidationError({"items": f"کالای «{product.name}» در یک انتقال فقط یک‌بار باید ثبت شود."})
+                seen_products.add(product.id)
                 inventory = Inventory.objects.select_for_update().filter(product=product, store=source).first()
                 if not inventory:
                     raise ValidationError({"items": f"کالای «{product.name}» در فروشگاه مبدأ موجود نیست."})
@@ -4040,7 +4060,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def approve(self, request, pk=None):
-        transfer = self.get_object()
+        transfer = self._locked_transfer(pk)
         if not has_store_access(request.user, transfer.source_store_id, {"manager"}):
             raise PermissionDenied("فقط مدیر مبدأ می‌تواند انتقال را تأیید کند.")
         if transfer.status != StockTransfer.STATUS_DRAFT:
@@ -4053,7 +4073,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def ship(self, request, pk=None):
-        transfer = self.get_object()
+        transfer = self._locked_transfer(pk)
         if not has_store_access(request.user, transfer.source_store_id, {"manager", "warehouse"}):
             raise PermissionDenied("برای ارسال انتقال مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_APPROVED:
@@ -4064,7 +4084,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
                 raise ValidationError(f"موجودی «{item.product.name}» کافی نیست.")
             inv.quantity -= item.quantity
             inv.save(update_fields=["quantity", "updated_at"])
-            InventoryTransaction.objects.create(product=item.product, store=transfer.source_store, transaction_type="adjustment", quantity=-item.quantity, reference_id=transfer.id, description=f"ارسال انتقال #{transfer.id}")
+            InventoryTransaction.objects.create(product=item.product, store=transfer.source_store, transaction_type=InventoryTransaction.TYPE_TRANSFER_OUT, quantity=-item.quantity, reference_id=transfer.id, description=f"ارسال انتقال #{transfer.id}")
         transfer.status = StockTransfer.STATUS_SHIPPED
         transfer.shipped_at = timezone.now()
         transfer.save(update_fields=["status", "shipped_at", "updated_at"])
@@ -4074,7 +4094,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def receive(self, request, pk=None):
-        transfer = self.get_object()
+        transfer = self._locked_transfer(pk)
         if not has_store_access(request.user, transfer.destination_store_id, {"manager", "warehouse"}):
             raise PermissionDenied("برای دریافت انتقال در فروشگاه مقصد مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_SHIPPED:
@@ -4083,7 +4103,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             inv, _ = Inventory.objects.select_for_update().get_or_create(product=item.product, store=transfer.destination_store, defaults={"quantity": Decimal("0")})
             inv.quantity += item.quantity
             inv.save(update_fields=["quantity", "updated_at"])
-            InventoryTransaction.objects.create(product=item.product, store=transfer.destination_store, transaction_type="adjustment", quantity=item.quantity, reference_id=transfer.id, description=f"دریافت انتقال #{transfer.id}")
+            InventoryTransaction.objects.create(product=item.product, store=transfer.destination_store, transaction_type=InventoryTransaction.TYPE_TRANSFER_IN, quantity=item.quantity, reference_id=transfer.id, description=f"دریافت انتقال #{transfer.id}")
         transfer.status = StockTransfer.STATUS_RECEIVED
         transfer.received_at = timezone.now()
         transfer.save(update_fields=["status", "received_at", "updated_at"])
@@ -4093,7 +4113,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def cancel(self, request, pk=None):
-        transfer = self.get_object()
+        transfer = self._locked_transfer(pk)
         if not has_store_access(request.user, transfer.source_store_id, {"manager"}):
             raise PermissionDenied("فقط مدیر مبدأ می‌تواند انتقال را لغو کند.")
         if transfer.status in {StockTransfer.STATUS_RECEIVED, StockTransfer.STATUS_CANCELLED, StockTransfer.STATUS_SHIPPED}:

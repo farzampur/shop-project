@@ -136,17 +136,21 @@ class CheckoutService:
             total_price=totals[2],
         )
 
-        # Lock every inventory row before changing stock.
+        # Lock inventory rows in a deterministic product-id order. This is
+        # important when two checkouts contain the same products in different
+        # cart order: deterministic locking reduces deadlock risk.
         inventories = {}
-        for item in items:
+        items_by_product_id = {item.product_id: item for item in items}
+        for product_id in sorted(items_by_product_id):
+            item = items_by_product_id[product_id]
             inventory = (Inventory.objects.select_for_update()
                          .select_related("product")
-                         .filter(product_id=item.product_id, store=cart.store).first())
+                         .filter(product_id=product_id, store=cart.store).first())
             if not inventory or inventory.quantity < item.quantity:
                 raise ValidationError(
                     f"موجودی کالای «{item.product.name}» کافی نیست."
                 )
-            inventories[item.product_id] = inventory
+            inventories[product_id] = inventory
 
         for item in items:
             before = item.quantity * item.unit_price
@@ -271,8 +275,9 @@ class OrderService:
             )
 
         if new_status == "cancelled":
-            # Reverse stock exactly once.
-            for item in order.items.select_related("product"):
+            # Reverse stock exactly once, with deterministic lock ordering.
+            order_items = list(order.items.select_related("product").order_by("product_id"))
+            for item in order_items:
                 inventory = Inventory.objects.select_for_update().get(
                     product_id=item.product_id, store=order.store
                 )
@@ -284,8 +289,9 @@ class OrderService:
                     description=f"Cancel Order #{order.id}",
                 )
 
-            # Reverse cash settlements.
-            for payment in order.payments.select_related("cashbox"):
+            # Reverse cash settlements in deterministic cashbox order.
+            payments = list(order.payments.select_related("cashbox").order_by("cashbox_id", "id"))
+            for payment in payments:
                 if payment.cashbox_id:
                     cashbox = CashBox.objects.select_for_update().get(pk=payment.cashbox_id)
                     if cashbox.balance < payment.amount:
