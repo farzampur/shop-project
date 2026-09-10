@@ -67,6 +67,7 @@ class CartItemSerializer(serializers.ModelSerializer):
             "product_name",
             "quantity",
             "unit_price",
+            "price_type",
             "purchase_price",
             "discount_percent",
             "discount_amount",
@@ -205,6 +206,7 @@ class CartItemCreateSerializer(
             "barcode",
             "quantity",
             "discount_percent",
+            "price_type",
         ]
 
         extra_kwargs = {
@@ -297,6 +299,8 @@ class CheckoutSerializer(serializers.Serializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
 
+    price_type_display = serializers.CharField(source="get_price_type_display", read_only=True)
+
     class Meta:
         model = OrderItem
 
@@ -306,6 +310,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "product_name",
             "quantity",
             "unit_price",
+            "price_type",
+            "price_type_display",
             "discount_percent",
             "total_price",
         ]

@@ -28,19 +28,31 @@ export type AppRouteKey =
   | "sales"
   | "customers"
   | "cashbox"
-  | "reports";
+  | "reports"
+  | "cashClose"
+  | "audit"
+  | "users"
+  | "stores"
+  | "transfers"
+  | "pricing";
 
 export const ROUTE_ROLES: Record<AppRouteKey, readonly StoreRole[]> = {
   dashboard: ALL_ROLES,
-  categories: ALL_ROLES,
-  products: ALL_ROLES,
-  inventory: ALL_ROLES,
+  categories: [ROLE.manager, ROLE.warehouse],
+  products: [ROLE.manager, ROLE.warehouse],
+  inventory: [ROLE.manager, ROLE.warehouse],
   purchases: [ROLE.manager, ROLE.warehouse],
   suppliers: [ROLE.manager, ROLE.warehouse],
   sales: [ROLE.manager, ROLE.seller, ROLE.cashier],
   customers: [ROLE.manager, ROLE.seller, ROLE.cashier],
   cashbox: [ROLE.manager, ROLE.cashier],
-  reports: ALL_ROLES,
+  reports: [ROLE.manager],
+  cashClose: [ROLE.manager, ROLE.cashier],
+  audit: [ROLE.manager],
+  users: [ROLE.manager],
+  stores: [ROLE.manager],
+  transfers: [ROLE.manager, ROLE.warehouse],
+  pricing: [ROLE.manager],
 };
 
 export function canAccessRoute(

@@ -62,7 +62,16 @@ class CartValidationService:
 
             product = item.product
 
-            if product.category.store_id != cart.store_id:
+            # محصول ممکن است در فروشگاه مبدأ ساخته شده باشد و بعداً
+            # از طریق StockTransfer به این فروشگاه منتقل شده باشد.
+            # بنابراین در Checkout، مالکیت فروش را فقط از روی Category
+            # تشخیص نمی‌دهیم؛ وجود Inventory در فروشگاه سبد نیز معتبر است.
+            belongs_to_cart_store = (
+                product.category.store_id == cart.store_id
+                or product.inventories.filter(store=cart.store).exists()
+            )
+
+            if not belongs_to_cart_store:
                 raise ValidationError(
                     f"کالای «{product.name}» متعلق به فروشگاه این سبد نیست."
                 )
@@ -146,6 +155,7 @@ class CheckoutService:
             OrderItem.objects.create(
                 order=order, product=item.product, product_name=item.product.name,
                 quantity=item.quantity, unit_price=item.unit_price,
+                price_type=item.price_type,
                 purchase_price=item.product.purchase_price,
                 discount_percent=item.discount_percent,
                 discount_amount=discount_amount,
@@ -811,6 +821,7 @@ def build_invoice_pdf(order):
             fa("ردیف"),
             fa("شرح کالا"),
             fa("تعداد"),
+            fa("نوع قیمت"),
             fa("قیمت واحد"),
             fa("تخفیف"),
             fa("مبلغ"),
@@ -835,6 +846,8 @@ def build_invoice_pdf(order):
                     item.quantity
                 ),
 
+                fa(item.get_price_type_display()),
+
                 money(
                     item.unit_price
                 ),
@@ -850,12 +863,13 @@ def build_invoice_pdf(order):
     item_table = Table(
         table_data,
         colWidths=[
-            13 * mm,
-            71 * mm,
+            12 * mm,
+            50 * mm,
+            24 * mm,
+            25 * mm,
             20 * mm,
-            28 * mm,
             20 * mm,
-            34 * mm,
+            35 * mm,
         ],
         repeatRows=1,
     )
@@ -1530,6 +1544,15 @@ def build_thermal_receipt_pdf(order):
                     fa(
                         f"تعداد: "
                         f"{item.quantity}"
+                    ),
+                    small_style,
+                )
+            ],
+            [
+                Paragraph(
+                    fa(
+                        f"نوع قیمت: "
+                        f"{item.get_price_type_display()}"
                     ),
                     small_style,
                 )

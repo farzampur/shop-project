@@ -1,6 +1,7 @@
 from django.db import models
 from core.models import Store
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 
 class Category(models.Model):
@@ -518,3 +519,65 @@ class PurchaseReturn(models.Model):
             f"{self.product.name}"
         )
         
+
+class StockTransfer(models.Model):
+    STATUS_DRAFT = "draft"
+    STATUS_APPROVED = "approved"
+    STATUS_SHIPPED = "shipped"
+    STATUS_RECEIVED = "received"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "پیش‌نویس"),
+        (STATUS_APPROVED, "تأیید شده"),
+        (STATUS_SHIPPED, "ارسال شده"),
+        (STATUS_RECEIVED, "دریافت شده"),
+        (STATUS_CANCELLED, "لغو شده"),
+    ]
+    source_store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="outgoing_transfers")
+    destination_store = models.ForeignKey(Store, on_delete=models.PROTECT, related_name="incoming_transfers")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="created_stock_transfers")
+    approved_by = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True, related_name="approved_stock_transfers")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class StockTransferItem(models.Model):
+    transfer = models.ForeignKey(StockTransfer, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="stock_transfer_items")
+    quantity = models.DecimalField(max_digits=15, decimal_places=3)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["transfer", "product"], name="unique_transfer_product")
+        ]
+
+
+class ProductPrice(models.Model):
+    TYPE_RETAIL = "retail"
+    TYPE_WHOLESALE = "wholesale"
+    TYPE_SPECIAL = "special"
+    PRICE_TYPES = [
+        (TYPE_RETAIL, "خرده‌فروشی"),
+        (TYPE_WHOLESALE, "عمده‌فروشی"),
+        (TYPE_SPECIAL, "ویژه"),
+    ]
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="prices")
+    store = models.ForeignKey(Store, on_delete=models.CASCADE, related_name="product_prices")
+    price_type = models.CharField(max_length=20, choices=PRICE_TYPES, default=TYPE_RETAIL)
+    amount = models.DecimalField(max_digits=15, decimal_places=2)
+    effective_from = models.DateTimeField(default=timezone.now)
+    effective_to = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="created_product_prices")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-effective_from", "-id"]

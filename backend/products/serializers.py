@@ -1,10 +1,13 @@
 from rest_framework import serializers
 from django.db import transaction
+from django.utils import timezone
 
 from core.fields import (
     JalaliDateTimeField,
 )
-from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction
+from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction, StockTransfer, StockTransferItem, ProductPrice
+
+from .pricing import get_valid_product_prices
 
 from .services import (
     generate_ean13,
@@ -57,6 +60,9 @@ class ProductSerializer(serializers.ModelSerializer):
     )
 
     inventory_quantity = serializers.SerializerMethodField()
+    effective_sale_price = serializers.SerializerMethodField()
+    effective_price_type = serializers.SerializerMethodField()
+    effective_price_type_display = serializers.SerializerMethodField()
 
     created_at = JalaliDateTimeField(
         with_time=True
@@ -77,6 +83,9 @@ class ProductSerializer(serializers.ModelSerializer):
             "category_name",
             "store_name",
             "inventory_quantity",
+            "effective_sale_price",
+            "effective_price_type",
+            "effective_price_type_display",
             "unit",
             "purchase_price",
             "sale_price",
@@ -92,7 +101,30 @@ class ProductSerializer(serializers.ModelSerializer):
             "category_name",
             "store_name",
             "inventory_quantity",
+            "effective_sale_price",
+            "effective_price_type",
+            "effective_price_type_display",
         ]
+
+    def _store_id(self):
+        request = self.context.get("request")
+        return request.query_params.get("store") if request else None
+
+    def _active_retail(self, obj):
+        store_id = self._store_id()
+        if not store_id:
+            return None
+        return get_valid_product_prices(obj, store_id, price_type=ProductPrice.TYPE_RETAIL).first()
+
+    def get_effective_sale_price(self, obj):
+        price = self._active_retail(obj)
+        return str(price.amount if price else obj.sale_price)
+
+    def get_effective_price_type(self, obj):
+        return "retail" if self._active_retail(obj) else "base"
+
+    def get_effective_price_type_display(self, obj):
+        return "خرده‌فروشی" if self._active_retail(obj) else "قیمت پایه"
 
     def get_inventory_quantity(self, obj):
         request = self.context.get("request")
@@ -706,3 +738,69 @@ class PurchaseReturnSerializer(
         ]
 
         
+
+
+class StockTransferItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    barcode = serializers.CharField(source="product.barcode", read_only=True)
+    class Meta:
+        model = StockTransferItem
+        fields = ["id", "product", "product_name", "barcode", "quantity"]
+        read_only_fields = ["id", "product_name", "barcode"]
+
+
+class StockTransferSerializer(serializers.ModelSerializer):
+    source_store_name = serializers.CharField(source="source_store.name", read_only=True)
+    destination_store_name = serializers.CharField(source="destination_store.name", read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    items = StockTransferItemSerializer(many=True, read_only=True)
+    class Meta:
+        model = StockTransfer
+        fields = ["id", "source_store", "source_store_name", "destination_store", "destination_store_name", "status", "status_display", "created_by", "created_by_username", "approved_by", "notes", "created_at", "updated_at", "shipped_at", "received_at", "items"]
+        read_only_fields = ["id", "created_by", "created_by_username", "approved_by", "status", "status_display", "created_at", "updated_at", "shipped_at", "received_at", "items"]
+
+
+class ProductPriceSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    store_name = serializers.CharField(source="store.name", read_only=True)
+    price_type_display = serializers.CharField(source="get_price_type_display", read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True)
+    is_current = serializers.SerializerMethodField()
+    class Meta:
+        model = ProductPrice
+        fields = ["id", "product", "product_name", "store", "store_name", "price_type", "price_type_display", "amount", "effective_from", "effective_to", "is_active", "is_current", "created_by", "created_by_username", "created_at", "updated_at"]
+        read_only_fields = ["id", "product_name", "store_name", "created_by", "created_by_username", "created_at", "updated_at"]
+
+    def get_is_current(self, obj):
+        now = timezone.now()
+        return bool(obj.is_active and obj.effective_from <= now and (obj.effective_to is None or obj.effective_to >= now))
+
+    def validate(self, attrs):
+        amount = attrs.get("amount", getattr(self.instance, "amount", None))
+        if amount is not None and amount <= 0:
+            raise serializers.ValidationError({"amount": "قیمت باید بزرگ‌تر از صفر باشد."})
+
+        start = attrs.get("effective_from", getattr(self.instance, "effective_from", None))
+        end = attrs.get("effective_to", getattr(self.instance, "effective_to", None))
+        if start is None:
+            start = timezone.now()
+            attrs["effective_from"] = start
+        if end is not None and end <= start:
+            raise serializers.ValidationError({"effective_to": "پایان اعتبار باید بعد از شروع اعتبار باشد."})
+
+        product = attrs.get("product", getattr(self.instance, "product", None))
+        store = attrs.get("store", getattr(self.instance, "store", None))
+        price_type = attrs.get("price_type", getattr(self.instance, "price_type", ProductPrice.TYPE_RETAIL))
+        is_active = attrs.get("is_active", getattr(self.instance, "is_active", True))
+        if product and store and is_active and (self.instance is None or product != self.instance.product or store != self.instance.store or price_type != self.instance.price_type or start != self.instance.effective_from or end != self.instance.effective_to or is_active != self.instance.is_active):
+            qs = ProductPrice.objects.filter(product=product, store=store, price_type=price_type, is_active=True)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            for other in qs.only("effective_from", "effective_to"):
+                # Intervals are inclusive; touching endpoints are therefore also overlap.
+                other_end = other.effective_to
+                if other_end is None or start <= other_end:
+                    if end is None or other.effective_from <= end:
+                        raise serializers.ValidationError({"effective_from": "بازه زمانی این قیمت با یک قیمت دیگر هم‌پوشانی دارد."})
+        return attrs

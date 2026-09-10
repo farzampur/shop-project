@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.models import Count, Avg, Max, Sum, Q, F, DecimalField, ExpressionWrapper, Value
 from django.db.models.functions import Coalesce
 from decimal import Decimal
+from django.utils import timezone
 from datetime import datetime
 from django.shortcuts import get_object_or_404
 from django.http import FileResponse
@@ -34,6 +35,9 @@ from .models import (
     PurchaseItem,
     PurchaseReturn,
     SupplierTransaction,
+    StockTransfer,
+    StockTransferItem,
+    ProductPrice,
 )
 from sales.models import (
     CashBox,
@@ -51,6 +55,9 @@ from .serializers import (
     SupplierTransactionSerializer, 
     SupplierPaymentSerializer,    
     PurchaseReturnSerializer,
+    StockTransferSerializer,
+    StockTransferItemSerializer,
+    ProductPriceSerializer,
 )
 from accounts.store_access import has_store_access, user_store_ids
 from accounts.permissions import StoreRolePermission
@@ -157,16 +164,26 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
 
-        queryset = Product.objects.filter(
-            category__store__store_users__user=self.request.user
-        ).distinct()
+        if self.request.user.is_superuser:
+            queryset = Product.objects.all()
+        else:
+            queryset = Product.objects.filter(
+                Q(category__store__store_users__user=self.request.user, category__store__store_users__is_active=True)
+                | Q(inventories__store__store_users__user=self.request.user, inventories__store__store_users__is_active=True)
+            ).distinct()
 
         store_id = self.request.query_params.get("store")
 
         if store_id:
-            queryset = queryset.filter(
-                category__store_id=store_id
-            )
+            if self.request.method == "GET":
+                queryset = queryset.filter(
+                    Q(category__store_id=store_id)
+                    | Q(inventories__store_id=store_id)
+                ).distinct()
+            else:
+                queryset = queryset.filter(
+                    category__store_id=store_id
+                )
 
         return queryset
 
@@ -1308,7 +1325,6 @@ class SlowMovingInventoryReportView(APIView):
         """
 
         from datetime import timedelta
-        from django.utils import timezone
         from django.db.models import Max
 
         try:
@@ -3885,13 +3901,12 @@ class ProductBarcodeSearchView(APIView):
 
         product = (
             Product.objects
-            .select_related(
-                "category",
-                "category__store",
-            )
+            .select_related("category", "category__store")
             .filter(
                 barcode=barcode,
-                category__store_id=store_id,
+                inventories__store_id=store_id,
+                inventories__store__store_users__user=request.user,
+                inventories__store__store_users__is_active=True,
                 is_active=True,
             )
             .first()
@@ -3958,3 +3973,185 @@ class ProductBarcodeSearchView(APIView):
         
         
         
+
+class StockTransferViewSet(viewsets.ModelViewSet):
+    serializer_class = StockTransferSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StockTransfer.objects.filter(
+            Q(source_store__store_users__user=self.request.user, source_store__store_users__is_active=True)
+            | Q(destination_store__store_users__user=self.request.user, destination_store__store_users__is_active=True)
+        ).select_related("source_store", "destination_store", "created_by", "approved_by").prefetch_related("items__product")
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            qs = qs.filter(Q(source_store_id=store_id) | Q(destination_store_id=store_id))
+        return qs.distinct()
+
+    def _can_source(self, store_id):
+        return has_store_access(self.request.user, store_id, {"manager", "warehouse"})
+
+    def perform_create(self, serializer):
+        source_id = serializer.validated_data["source_store"].id
+        destination = serializer.validated_data["destination_store"]
+        if source_id == destination.id:
+            raise ValidationError("مبدأ و مقصد انتقال نمی‌توانند یکسان باشند.")
+        if not destination.is_active:
+            raise ValidationError("فروشگاه مقصد غیرفعال است.")
+        if not self._can_source(source_id):
+            raise PermissionDenied("برای ایجاد انتقال در فروشگاه مبدأ مجوز ندارید.")
+        transfer = serializer.save(created_by=self.request.user)
+        audit(user=self.request.user, action="create", model_name="StockTransfer", object_id=transfer.id, store=transfer.source_store, description=f"ایجاد انتقال کالا #{transfer.id}")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        source = serializer.validated_data["source_store"]
+        destination = serializer.validated_data["destination_store"]
+        if source.id == destination.id:
+            raise ValidationError("مبدأ و مقصد انتقال نمی‌توانند یکسان باشند.")
+        if not self._can_source(source.id):
+            raise PermissionDenied("برای ایجاد انتقال در فروشگاه مبدأ مجوز ندارید.")
+        if not has_store_access(request.user, destination.id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای انتقال به فروشگاه مقصد دسترسی انبار/مدیریت ندارید.")
+        notes = serializer.validated_data.get("notes", "")
+        items = request.data.get("items") or []
+        if not items:
+            raise ValidationError({"items": "حداقل یک کالا برای انتقال لازم است."})
+        with transaction.atomic():
+            transfer = StockTransfer.objects.create(source_store=source, destination_store=destination, created_by=request.user, notes=notes)
+            for raw in items:
+                try:
+                    product = Product.objects.get(pk=raw.get("product"), is_active=True)
+                    qty = Decimal(str(raw.get("quantity")))
+                except Exception:
+                    raise ValidationError({"items": "کالا یا مقدار انتقال نامعتبر است."})
+                if qty <= 0:
+                    raise ValidationError({"items": "مقدار انتقال باید بیشتر از صفر باشد."})
+                inventory = Inventory.objects.select_for_update().filter(product=product, store=source).first()
+                if not inventory:
+                    raise ValidationError({"items": f"کالای «{product.name}» در فروشگاه مبدأ موجود نیست."})
+                if inventory.quantity < qty:
+                    raise ValidationError({"items": f"موجودی «{product.name}» برای انتقال کافی نیست."})
+                StockTransferItem.objects.create(transfer=transfer, product=product, quantity=qty)
+            audit(user=request.user, action="create", model_name="StockTransfer", object_id=transfer.id, store=source, description=f"ایجاد انتقال کالا #{transfer.id}")
+        return Response(self.get_serializer(transfer).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def approve(self, request, pk=None):
+        transfer = self.get_object()
+        if not has_store_access(request.user, transfer.source_store_id, {"manager"}):
+            raise PermissionDenied("فقط مدیر مبدأ می‌تواند انتقال را تأیید کند.")
+        if transfer.status != StockTransfer.STATUS_DRAFT:
+            raise ValidationError("این انتقال در وضعیت قابل تأیید نیست.")
+        transfer.status = StockTransfer.STATUS_APPROVED
+        transfer.approved_by = request.user
+        transfer.save(update_fields=["status", "approved_by", "updated_at"])
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def ship(self, request, pk=None):
+        transfer = self.get_object()
+        if not has_store_access(request.user, transfer.source_store_id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای ارسال انتقال مجوز ندارید.")
+        if transfer.status != StockTransfer.STATUS_APPROVED:
+            raise ValidationError("فقط انتقال تأیید شده قابل ارسال است.")
+        for item in transfer.items.select_related("product"):
+            inv = Inventory.objects.select_for_update().get(product=item.product, store=transfer.source_store)
+            if inv.quantity < item.quantity:
+                raise ValidationError(f"موجودی «{item.product.name}» کافی نیست.")
+            inv.quantity -= item.quantity
+            inv.save(update_fields=["quantity", "updated_at"])
+            InventoryTransaction.objects.create(product=item.product, store=transfer.source_store, transaction_type="adjustment", quantity=-item.quantity, reference_id=transfer.id, description=f"ارسال انتقال #{transfer.id}")
+        transfer.status = StockTransfer.STATUS_SHIPPED
+        transfer.shipped_at = timezone.now()
+        transfer.save(update_fields=["status", "shipped_at", "updated_at"])
+        audit(user=request.user, action="update", model_name="StockTransfer", object_id=transfer.id, store=transfer.source_store, description=f"ارسال انتقال کالا #{transfer.id}")
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def receive(self, request, pk=None):
+        transfer = self.get_object()
+        if not has_store_access(request.user, transfer.destination_store_id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای دریافت انتقال در فروشگاه مقصد مجوز ندارید.")
+        if transfer.status != StockTransfer.STATUS_SHIPPED:
+            raise ValidationError("فقط انتقال ارسال شده قابل دریافت است.")
+        for item in transfer.items.select_related("product"):
+            inv, _ = Inventory.objects.select_for_update().get_or_create(product=item.product, store=transfer.destination_store, defaults={"quantity": Decimal("0")})
+            inv.quantity += item.quantity
+            inv.save(update_fields=["quantity", "updated_at"])
+            InventoryTransaction.objects.create(product=item.product, store=transfer.destination_store, transaction_type="adjustment", quantity=item.quantity, reference_id=transfer.id, description=f"دریافت انتقال #{transfer.id}")
+        transfer.status = StockTransfer.STATUS_RECEIVED
+        transfer.received_at = timezone.now()
+        transfer.save(update_fields=["status", "received_at", "updated_at"])
+        audit(user=request.user, action="update", model_name="StockTransfer", object_id=transfer.id, store=transfer.destination_store, description=f"دریافت انتقال کالا #{transfer.id}")
+        return Response(self.get_serializer(transfer).data)
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        transfer = self.get_object()
+        if not has_store_access(request.user, transfer.source_store_id, {"manager"}):
+            raise PermissionDenied("فقط مدیر مبدأ می‌تواند انتقال را لغو کند.")
+        if transfer.status in {StockTransfer.STATUS_RECEIVED, StockTransfer.STATUS_CANCELLED, StockTransfer.STATUS_SHIPPED}:
+            raise ValidationError("این انتقال قابل لغو نیست.")
+        transfer.status = StockTransfer.STATUS_CANCELLED
+        transfer.save(update_fields=["status", "updated_at"])
+        audit(user=request.user, action="cancel", model_name="StockTransfer", object_id=transfer.id, store=transfer.source_store, description=f"لغو انتقال کالا #{transfer.id}")
+        return Response(self.get_serializer(transfer).data)
+
+
+class ProductPriceViewSet(viewsets.ModelViewSet):
+    serializer_class = ProductPriceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ProductPrice.objects.filter(store__store_users__user=self.request.user, store__store_users__is_active=True).select_related("product", "store", "created_by")
+        if self.request.user.is_superuser:
+            qs = ProductPrice.objects.all().select_related("product", "store", "created_by")
+        store_id = self.request.query_params.get("store")
+        if store_id:
+            qs = qs.filter(store_id=store_id)
+        product_id = self.request.query_params.get("product")
+        if product_id:
+            qs = qs.filter(product_id=product_id)
+        if self.request.query_params.get("active") in {"1", "true", "True"}:
+            now = timezone.now()
+            qs = qs.filter(is_active=True, effective_from__lte=now).filter(Q(effective_to__isnull=True) | Q(effective_to__gte=now))
+        price_type = self.request.query_params.get("price_type")
+        if price_type:
+            qs = qs.filter(price_type=price_type)
+        return qs.distinct()
+
+    def _require_manager(self, store_id):
+        if not has_store_access(self.request.user, store_id, {"manager"}):
+            raise PermissionDenied("فقط مدیر فروشگاه می‌تواند قیمت‌گذاری کند.")
+
+    def perform_create(self, serializer):
+        store = serializer.validated_data["store"]
+        product = serializer.validated_data["product"]
+        self._require_manager(store.id)
+        if not Inventory.objects.filter(store=store, product=product).exists():
+            raise ValidationError("این کالا در فروشگاه انتخاب‌شده تخصیص داده نشده است.")
+        obj = serializer.save(created_by=self.request.user)
+        audit(user=self.request.user, action="create", model_name="ProductPrice", object_id=obj.id, store=obj.store, description=f"ثبت قیمت {obj.product.name}", metadata={"type": obj.price_type, "amount": str(obj.amount)})
+
+    def perform_update(self, serializer):
+        target_store = serializer.validated_data.get("store", serializer.instance.store)
+        target_product = serializer.validated_data.get("product", serializer.instance.product)
+        self._require_manager(target_store.id)
+        if not Inventory.objects.filter(store=target_store, product=target_product).exists():
+            raise ValidationError("این کالا در فروشگاه انتخاب‌شده تخصیص داده نشده است.")
+        obj = serializer.save()
+        audit(user=self.request.user, action="update", model_name="ProductPrice", object_id=obj.id, store=obj.store, description=f"ویرایش قیمت {obj.product.name}", metadata={"type": obj.price_type, "amount": str(obj.amount), "effective_from": obj.effective_from.isoformat(), "effective_to": obj.effective_to.isoformat() if obj.effective_to else None})
+
+    def perform_destroy(self, instance):
+        self._require_manager(instance.store_id)
+        store = instance.store
+        product_name = instance.product.name
+        object_id = instance.id
+        instance.delete()
+        audit(user=self.request.user, action="delete", model_name="ProductPrice", object_id=object_id, store=store, description=f"حذف قیمت {product_name}")

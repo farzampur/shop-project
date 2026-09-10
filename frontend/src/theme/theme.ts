@@ -1,38 +1,3 @@
 import { createTheme } from "@mui/material/styles";
-
-const theme = createTheme({
-  direction: "rtl",
-
-  typography: {
-    fontFamily: [
-      "Tahoma",
-      "Arial",
-      "sans-serif",
-    ].join(","),
-  },
-
-  components: {
-    MuiTypography: {
-      styleOverrides: {
-        root: {
-          direction: "rtl",
-          textAlign: "right",
-        },
-      },
-    },
-  },
-
-  palette: {
-    mode: "light",
-
-    primary: {
-      main: "#1976d2",
-    },
-
-    secondary: {
-      main: "#9c27b0",
-    },
-  },
-});
-
+const theme=createTheme({direction:"rtl",typography:{fontFamily:"Tahoma, Arial, sans-serif",h4:{fontWeight:800},h5:{fontWeight:800},h6:{fontWeight:800}},palette:{mode:"light",primary:{main:"#2563eb"},secondary:{main:"#7c3aed"},success:{main:"#16805b"},warning:{main:"#b7791f"},error:{main:"#c53030"},background:{default:"#f5f7fb",paper:"#fff"}},shape:{borderRadius:14},components:{MuiTypography:{styleOverrides:{root:{direction:"rtl",textAlign:"right"}}},MuiButton:{defaultProps:{disableElevation:true}},MuiTooltip:{styleOverrides:{tooltip:{fontFamily:"Tahoma, Arial, sans-serif"}}}}});
 export default theme;

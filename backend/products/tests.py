@@ -1,6 +1,8 @@
 # Create your tests here.
 
 from decimal import Decimal
+from datetime import timedelta
+from django.utils import timezone
 
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -210,3 +212,35 @@ class PurchaseSupplierDebtTests(TestCase):
         )        
         
         
+class ProductPricingTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from core.models import Store
+        from products.models import Category, Product, Inventory, ProductPrice
+        self.user = User.objects.create_user(username="price-manager", password="x")
+        self.store = Store.objects.create(name="Price Store")
+        from accounts.models import UserStore
+        UserStore.objects.create(user=self.user, store=self.store, role="manager", is_active=True)
+        category = Category.objects.create(name="General", store=self.store)
+        self.product = Product.objects.create(name="Price Product", barcode="1111111111111", category=category, sale_price=Decimal("100"))
+        Inventory.objects.create(product=self.product, store=self.store, quantity=10)
+        self.ProductPrice = ProductPrice
+
+    def test_overlapping_price_windows_are_rejected(self):
+        from products.serializers import ProductPriceSerializer
+        now = timezone.now()
+        self.ProductPrice.objects.create(product=self.product, store=self.store, price_type="retail", amount=120, effective_from=now, effective_to=now + timedelta(days=10), created_by=self.user)
+        serializer = ProductPriceSerializer(data={"product": self.product.id, "store": self.store.id, "price_type":"retail", "amount":"130", "effective_from":(now+timedelta(days=5)).isoformat(), "effective_to":(now+timedelta(days=15)).isoformat(), "is_active":True})
+        self.assertFalse(serializer.is_valid())
+
+    def test_gap_falls_back_to_base_price(self):
+        from products.pricing import get_effective_sale_price
+        now = timezone.now()
+        self.ProductPrice.objects.create(product=self.product, store=self.store, price_type="retail", amount=120, effective_from=now-timedelta(days=20), effective_to=now-timedelta(days=10), created_by=self.user)
+        self.assertEqual(get_effective_sale_price(self.product, self.store.id, at=now), Decimal("100"))
+
+    def test_active_price_is_used(self):
+        from products.pricing import get_effective_sale_price
+        now = timezone.now()
+        self.ProductPrice.objects.create(product=self.product, store=self.store, price_type="retail", amount=120, effective_from=now-timedelta(days=1), effective_to=now+timedelta(days=1), created_by=self.user)
+        self.assertEqual(get_effective_sale_price(self.product, self.store.id, at=now), Decimal("120"))

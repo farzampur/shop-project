@@ -121,6 +121,13 @@ class CartItem(models.Model):
         verbose_name="قیمت واحد قبل از تخفیف"
     )
 
+    price_type = models.CharField(
+        max_length=20,
+        default="retail",
+        choices=[("retail", "خرده‌فروشی"), ("wholesale", "عمده‌فروشی"), ("special", "ویژه")],
+        verbose_name="نوع قیمت"
+    )
+
     discount_percent = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -144,8 +151,8 @@ class CartItem(models.Model):
 
         constraints = [
             models.UniqueConstraint(
-                fields=["cart", "product"],
-                name="unique_cart_product"
+                fields=["cart", "product", "price_type"],
+                name="unique_cart_product_price_type"
             )
         ]
 
@@ -296,6 +303,13 @@ class OrderItem(models.Model):
         max_digits=15,
         decimal_places=2,
         verbose_name="قیمت واحد"
+    )
+
+    price_type = models.CharField(
+        max_length=20,
+        default="retail",
+        choices=[("retail", "خرده‌فروشی"), ("wholesale", "عمده‌فروشی"), ("special", "ویژه")],
+        verbose_name="نوع قیمت"
     )
 
     purchase_price = models.DecimalField(

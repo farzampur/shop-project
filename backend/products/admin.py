@@ -2,6 +2,7 @@ from django.contrib import admin
 from .models import (
     Category, Product, Inventory, InventoryTransaction,
     Supplier, Purchase, PurchaseItem, SupplierTransaction, PurchaseReturn,
+    StockTransfer, StockTransferItem, ProductPrice,
 )
 
 MODEL_NAMES = {
@@ -14,6 +15,9 @@ MODEL_NAMES = {
     PurchaseItem: ("آیتم خرید", "آیتم‌های خرید"),
     SupplierTransaction: ("تراکنش تأمین‌کننده", "تراکنش‌های تأمین‌کنندگان"),
     PurchaseReturn: ("برگشت خرید", "برگشت‌های خرید"),
+    StockTransfer: ("انتقال کالا", "انتقال کالاها"),
+    StockTransferItem: ("آیتم انتقال", "آیتم‌های انتقال"),
+    ProductPrice: ("قیمت کالا", "قیمت‌های کالا"),
 }
 for model, names in MODEL_NAMES.items():
     model._meta.verbose_name, model._meta.verbose_name_plural = names
@@ -107,3 +111,25 @@ class PurchaseReturnAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
     readonly_fields = ("created_at", "total_amount")
     list_per_page = 25
+
+
+@admin.register(StockTransfer)
+class StockTransferAdmin(admin.ModelAdmin):
+    list_display = ("id", "source_store", "destination_store", "status", "created_by", "created_at")
+    list_filter = ("status", "source_store", "destination_store", "created_at")
+    search_fields = ("id", "notes", "created_by__username")
+    readonly_fields = ("created_at", "updated_at", "shipped_at", "received_at")
+
+
+@admin.register(StockTransferItem)
+class StockTransferItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "transfer", "product", "quantity")
+    search_fields = ("product__name", "product__barcode")
+
+
+@admin.register(ProductPrice)
+class ProductPriceAdmin(admin.ModelAdmin):
+    list_display = ("id", "product", "store", "price_type", "amount", "effective_from", "effective_to", "is_active")
+    list_filter = ("store", "price_type", "is_active", "effective_from")
+    search_fields = ("product__name", "product__barcode", "store__name")
+    readonly_fields = ("created_at", "updated_at")

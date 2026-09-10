@@ -1,0 +1,41 @@
+services:
+
+  db:
+    image: postgres:16
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - shop_installer_test_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+
+  web:
+    image: shop-backend:1.0.4
+
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 5432
+
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+
+    ports:
+      - "8010:8000"
+
+    depends_on:
+      - db
+
+    restart: unless-stopped
+
+
+volumes:
+  shop_installer_test_data:

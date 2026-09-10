@@ -4,3 +4,14 @@ __pycache__/
 .env
 frontend/node_modules/
 frontend/dist/
+
+# Local/generated files
+backend/staticfiles/
+*.pyc
+__pycache__/
+*.dump
+gittoken.txt
+postgrepass.txt
+data.json
+release/
+installer/payload/*.tar

@@ -24,6 +24,12 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import CategoryIcon from "@mui/icons-material/Category";
 import LocalShippingIcon from "@mui/icons-material/LocalShipping";
 import LogoutIcon from "@mui/icons-material/Logout";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import LockClockIcon from "@mui/icons-material/LockClock";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import StorefrontIcon from "@mui/icons-material/Storefront";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import PriceChangeIcon from "@mui/icons-material/PriceChange";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../contexts/StoreContext";
 import { canAccessRoute, type AppRouteKey } from "../services/routePermissions";
@@ -48,6 +54,12 @@ const menuItems: readonly MenuItem[] = [
   { key: "customers", title: "مشتریان", path: "/customers", icon: <PeopleIcon /> },
   { key: "cashbox", title: "صندوق", path: "/cashbox", icon: <AccountBalanceIcon /> },
   { key: "reports", title: "گزارش‌ها", path: "/reports", icon: <AssessmentIcon /> },
+  { key: "cashClose", title: "بستن صندوق", path: "/cash-close", icon: <LockClockIcon /> },
+  { key: "audit", title: "گزارش فعالیت", path: "/audit", icon: <FactCheckIcon /> },
+  { key: "users", title: "کاربران و کارکنان", path: "/users", icon: <AdminPanelSettingsIcon /> },
+  { key: "stores", title: "مدیریت شعب", path: "/stores", icon: <StorefrontIcon /> },
+  { key: "transfers", title: "انتقال بین شعب", path: "/transfers", icon: <SwapHorizIcon /> },
+  { key: "pricing", title: "قیمت‌گذاری", path: "/pricing", icon: <PriceChangeIcon /> },
 ];
 
 const roleLabels = {
@@ -122,10 +134,17 @@ function DashboardLayout() {
         sx={{
           width: drawerWidth,
           flexShrink: 0,
-          "& .MuiDrawer-paper": { width: drawerWidth, boxSizing: "border-box", top: 64 },
+          "& .MuiDrawer-paper": {
+            width: drawerWidth,
+            boxSizing: "border-box",
+            top: 64,
+            height: "calc(100vh - 64px)",
+            display: "flex",
+            flexDirection: "column",
+          },
         }}
       >
-        <List sx={{ pt: 2 }}>
+        <List sx={{ pt: 2, flex: 1, overflowY: "auto" }}>
           {visibleMenuItems.map((item) => {
             const selected = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
@@ -133,17 +152,24 @@ function DashboardLayout() {
                 key={item.path}
                 selected={selected}
                 onClick={() => navigate(item.path)}
+                sx={{ minHeight: 44 }}
               >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.title} sx={{ textAlign: "right" }} />
+                <ListItemIcon sx={{ minWidth: 38 }}>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.88rem" } }} />
               </ListItemButton>
             );
           })}
-          <ListItemButton onClick={handleLogout}>
-            <ListItemIcon><LogoutIcon /></ListItemIcon>
-            <ListItemText primary="خروج" sx={{ textAlign: "right" }} />
-          </ListItemButton>
         </List>
+
+        <Box sx={{ borderTop: "1px solid #e8edf5", p: 1, backgroundColor: "rgba(255,255,255,.96)" }}>
+          <ListItemButton
+            onClick={handleLogout}
+            sx={{ minHeight: 46, color: "error.main", fontWeight: 700 }}
+          >
+            <ListItemIcon sx={{ minWidth: 38, color: "inherit" }}><LogoutIcon /></ListItemIcon>
+            <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.9rem", fontWeight: 700 } }} />
+          </ListItemButton>
+        </Box>
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>

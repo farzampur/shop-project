@@ -16,6 +16,12 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
   useEffect(() => {
     let mounted = true;
 
+    const handleAuthChange = () => {
+      if (mounted) setAuthenticated(false);
+    };
+
+    window.addEventListener("auth-change", handleAuthChange);
+
     const ensureSession = async () => {
       const accessToken = tokenService.getAccessToken();
       if (!accessToken) {
@@ -38,7 +44,10 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
     };
 
     void ensureSession();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      window.removeEventListener("auth-change", handleAuthChange);
+    };
   }, []);
 
   if (checking) {

@@ -1,0 +1,2 @@
+import api from './api'; export interface AuditLog { id:number; username:string; store_name:string; action:string; action_label:string; model_name:string; object_id:number|null; description:string; created_at:string }
+export async function listAuditLogs(store:number, action?:string){const r=await api.get<AuditLog[]>('/audit-logs/',{params:{store,action:action||undefined}});return Array.isArray(r.data)?r.data:(r.data as any).results??[]}

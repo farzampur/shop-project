@@ -48,6 +48,7 @@ from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
 from products.models import Product, Inventory
 from core.audit import audit
+from products.pricing import get_effective_sale_price
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -176,7 +177,9 @@ class CartItemViewSet(viewsets.ModelViewSet):
                 Product.objects
                 .filter(
                     barcode=str(barcode).strip(),
-                    category__store_id=cart.store_id,
+                    inventories__store_id=cart.store_id,
+                    inventories__store__store_users__user=self.request.user,
+                    inventories__store__store_users__is_active=True,
                     is_active=True,
                 )
                 .first()
@@ -193,9 +196,9 @@ class CartItemViewSet(viewsets.ModelViewSet):
         if not product:
             raise ValidationError({"product": "کالا مشخص نشده است."})
 
-        if product.category.store_id != cart.store_id:
+        if not product.inventories.filter(store_id=cart.store_id).exists():
             raise ValidationError(
-                {"product": "این کالا متعلق به فروشگاه انتخاب‌شده نیست."}
+                {"product": "این کالا در فروشگاه انتخاب‌شده تخصیص داده نشده است."}
             )
 
         # -----------------------------
@@ -203,6 +206,7 @@ class CartItemViewSet(viewsets.ModelViewSet):
         # -----------------------------
 
         quantity = serializer.validated_data["quantity"]
+        price_type = serializer.validated_data.get("price_type", "retail")
 
         discount_percent = serializer.validated_data.get(
             "discount_percent",
@@ -241,11 +245,18 @@ class CartItemViewSet(viewsets.ModelViewSet):
                 f"مقدار درخواستی: {quantity} واحد."
             )
 
-        unit_price = product.sale_price
+        unit_price = get_effective_sale_price(product, cart.store_id, price_type=price_type)
+        if unit_price is None:
+            raise ValidationError({"price_type": "برای این نوع قیمت، قیمت فعال و معتبر وجود ندارد."})
 
+        # نوع قیمت بخشی از هویت آیتم سبد است.
+        # بنابراین خرده/عمده/ویژه برای یک کالا باید آیتم‌های جداگانه داشته باشند.
+        # قبلاً فقط cart + product در lookup بود و نوع قیمت دوم، آیتم اول را پیدا
+        # می‌کرد و به جای ایجاد آیتم جدید، تعداد همان آیتم را افزایش می‌داد.
         item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
+            price_type=price_type,
             defaults={
                 "quantity": quantity,
                 "unit_price": unit_price,
@@ -254,6 +265,7 @@ class CartItemViewSet(viewsets.ModelViewSet):
         )
 
         if not created:
+            # همین price_type پیدا شده؛ فقط مقدار همان آیتم افزایش می‌یابد.
             new_quantity = item.quantity + quantity
 
             if inventory.quantity < new_quantity:
@@ -265,6 +277,7 @@ class CartItemViewSet(viewsets.ModelViewSet):
 
             item.quantity = new_quantity
             item.unit_price = unit_price
+            item.price_type = price_type
             item.discount_percent = discount_percent
 
             item.save()
@@ -317,7 +330,7 @@ class CartItemViewSet(viewsets.ModelViewSet):
             )
 
         serializer.save(
-            unit_price=item.product.sale_price
+            unit_price=get_effective_sale_price(item.product, item.cart.store_id, price_type=item.price_type)
         )                
         
 class CheckoutView(APIView):

@@ -1,13 +1,2 @@
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  min-height: 100%;
-  direction: rtl;
-}
-
-body {
-  font-family: Tahoma, Arial, sans-serif;
-}
+:root{font-family:Tahoma,Arial,sans-serif;color:#172033;background:#f5f7fb;font-synthesis:none;text-rendering:optimizeLegibility}
+*{box-sizing:border-box} html,body,#root{margin:0;min-width:320px;min-height:100%;direction:rtl} body{background:linear-gradient(135deg,#f7f9fc 0%,#eef3f9 100%);color:#172033} button,input,select,textarea{font-family:inherit}.MuiPaper-root{box-shadow:0 8px 28px rgba(31,48,77,.07)!important;border:1px solid rgba(30,55,90,.07)}.MuiCard-root{border-radius:18px!important}.MuiButton-root{border-radius:12px!important;font-weight:700!important}.MuiTextField-root .MuiOutlinedInput-root{border-radius:12px}.MuiTableHead-root .MuiTableCell-root{font-weight:800;background:#f8fafc}.MuiDrawer-paper{background:linear-gradient(180deg,#ffffff 0%,#f7f9fd 100%)!important;border-left:1px solid #e8edf5!important}.MuiAppBar-root{background:rgba(255,255,255,.92)!important;color:#172033!important;backdrop-filter:blur(14px);border-bottom:1px solid #e7ebf2;box-shadow:0 4px 20px rgba(20,40,70,.06)!important}.MuiListItemButton-root{margin:4px 10px;border-radius:12px}.MuiListItemButton-root.Mui-selected{background:linear-gradient(90deg,#e8f0ff,#f4f7ff)!important;color:#1456b8}.MuiListItemButton-root:hover{background:#f1f5fb}.page-shell{max-width:1500px;margin:0 auto}.kpi-grid{margin-top:18px}.soft-title{font-weight:800;letter-spacing:-.3px}.muted{color:#68758a}.status-good{color:#18794e}.status-warn{color:#9a6700}.status-danger{color:#b42318}.metric-value{font-size:1.55rem;font-weight:850}.section-card{padding:22px;border-radius:18px;background:rgba(255,255,255,.92)}

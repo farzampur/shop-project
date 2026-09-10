@@ -12,6 +12,9 @@ export interface Product {
   sale_price?: string;
   is_active?: boolean;
   inventory_quantity?: string | number | null;
+  effective_sale_price?: string;
+  effective_price_type?: string;
+  effective_price_type_display?: string;
 }
 
 export interface ProductWriteData {

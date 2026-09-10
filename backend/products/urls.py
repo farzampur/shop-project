@@ -37,10 +37,24 @@ from .views import (
     ProductLabelPDFView,
     ProductLabelsPDFView,
     ProductBarcodeSearchView,
+    StockTransferViewSet,
+    ProductPriceViewSet,
 )
 
 
 router = DefaultRouter()
+
+router.register(
+    r"stock-transfers",
+    StockTransferViewSet,
+    basename="stock-transfer"
+)
+
+router.register(
+    r"prices",
+    ProductPriceViewSet,
+    basename="product-price"
+)
 
 router.register(
     r"categories",

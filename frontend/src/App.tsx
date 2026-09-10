@@ -16,6 +16,12 @@ import Sales from "./pages/sales/Sales";
 import Reports from "./pages/Reports";
 import Customers from "./pages/customers/Customers";
 import Cashbox from "./pages/cashbox/Cashbox";
+import CashDayClose from "./pages/cashbox/CashDayClose";
+import AuditLogs from "./pages/audit/AuditLogs";
+import Users from "./pages/management/Users";
+import Stores from "./pages/management/Stores";
+import StockTransfers from "./pages/transfers/StockTransfers";
+import Pricing from "./pages/pricing/Pricing";
 
 function App() {
   return (
@@ -112,6 +118,14 @@ function App() {
               </RoleRoute>
             }
           />
+
+          <Route path="/cash-close" element={<RoleRoute allowedRoles={ROUTE_ROLES.cashClose}><CashDayClose /></RoleRoute>} />
+          <Route path="/audit" element={<RoleRoute allowedRoles={ROUTE_ROLES.audit}><AuditLogs /></RoleRoute>} />
+          <Route path="/users" element={<RoleRoute allowedRoles={ROUTE_ROLES.users}><Users /></RoleRoute>} />
+          <Route path="/stores" element={<RoleRoute allowedRoles={ROUTE_ROLES.stores}><Stores /></RoleRoute>} />
+          <Route path="/transfers" element={<RoleRoute allowedRoles={ROUTE_ROLES.transfers}><StockTransfers /></RoleRoute>} />
+          <Route path="/pricing" element={<RoleRoute allowedRoles={ROUTE_ROLES.pricing}><Pricing /></RoleRoute>} />
+
 
           <Route
             path="/reports"
