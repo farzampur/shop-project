@@ -193,6 +193,10 @@ EMAIL_USE_TLS = EMAIL_CONFIG['USE_TLS']
 
 
 
+# Test runner: show live per-test progress during Django test runs.
+TEST_RUNNER = "core.test_runner.DiscoverRunnerWithLiveProgress"
+
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

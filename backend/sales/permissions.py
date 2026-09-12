@@ -54,14 +54,53 @@ class CartPermission(BasePermission):
                 role__in=self.ALLOWED_ROLES,
             ).exists()
 
-        store_id = request.data.get("store")
-        if store_id is not None:
+        # Creating a cart: the target store must be supplied explicitly.
+        # POST on nested CartItem routes:
+        # the store is derived from the parent cart, not from request.data.
+        if request.method == "POST":
+            cart_id = getattr(view, "kwargs", {}).get("cart_pk")
+
+            if cart_id is not None:
+                return UserStore.objects.filter(
+                    user=request.user,
+                    is_active=True,
+                    role__in=self.ALLOWED_ROLES,
+                    store__is_active=True,
+                    store__carts__id=cart_id,
+                ).exists()
+
+            # Creating a top-level Cart: the target store must be supplied explicitly.
+            store_id = request.data.get("store")
+            if store_id is None:
+                return False
+
             return UserStore.objects.filter(
                 user=request.user,
                 store_id=store_id,
                 is_active=True,
+                store__is_active=True,
                 role__in=self.ALLOWED_ROLES,
             ).exists()
+
+        # Updating/deleting a top-level cart may only send the changed field
+        # (for example {"customer": 2}). Never trust a client-supplied store;
+        # derive the store from the existing cart instead.
+        if request.method in {"PUT", "PATCH", "DELETE"}:
+            cart_id = getattr(view, "kwargs", {}).get("pk")
+            if cart_id is not None:
+                cart = Cart.objects.filter(
+                    pk=cart_id,
+                    user=request.user,
+                ).values("store_id").first()
+                if not cart:
+                    return False
+                return UserStore.objects.filter(
+                    user=request.user,
+                    store_id=cart["store_id"],
+                    is_active=True,
+                    store__is_active=True,
+                    role__in=self.ALLOWED_ROLES,
+                ).exists()
 
         # Nested CartItem routes are resolved by the parent cart.
         cart_id = getattr(view, "kwargs", {}).get("cart_pk")

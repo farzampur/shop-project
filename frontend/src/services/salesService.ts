@@ -4,7 +4,7 @@ import type { ApiListResponse } from "./apiTypes";
 export type PaymentMethod = "cash" | "card" | "credit";
 export type OrderStatus = "pending" | "confirmed" | "paid" | "cancelled";
 
-export interface CartItem { id:number; product:number; product_name:string; price_type:"retail"|"wholesale"|"special"; purchase_price?:string; quantity:string; unit_price:string; discount_percent:string; discount_amount:string; final_unit_price:string; total_price_before_discount:string; total_discount_amount:string; total_price:string; }
+export interface CartItem { id:number; product:number; product_name:string; price_type:"retail"|"wholesale"|"special"; price_type_display?:string; purchase_price?:string; quantity:string; unit_price:string; discount_percent:string; discount_amount:string; final_unit_price:string; total_price_before_discount:string; total_discount_amount:string; total_price:string; }
 export interface Cart { id:number; store:number; store_name:string; customer:number|null; items:CartItem[]; total_before_discount:string; total_discount:string; total_price:string; subtotal_price?:string; discount_amount?:string; }
 export interface Payment { id:number; method:PaymentMethod; amount:string; cashbox:number|null; created_at:string; }
 export interface OrderItem { id:number; product_id:number; product_name:string; quantity:string; unit_price:string; price_type:"retail"|"wholesale"|"special"; price_type_display?:string; discount_percent:string; total_price:string; }

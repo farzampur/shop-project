@@ -21,3 +21,12 @@ export async function profitReport(p?: ReportParams) { return (await api.get<Pro
 export async function financialReport(p?: ReportParams) { return (await api.get<Financial>("/sales/sales-report/financial/", query(p))).data; }
 export async function cancellationsReport(p?: ReportParams) { return (await api.get<Cancellation[]>("/sales/sales-report/cancellations/", query(p))).data; }
 export async function cashReconciliation(p?: ReportParams) { return (await api.get<CashRecon[]>("/sales/sales-report/cash-reconciliation/", query(p))).data; }
+
+export type StoreComparison = { store_id:number; store__name:string; order_count:number; total_sales:string; total_discount:string; cost:string; gross_profit:string };
+export type SellerPerformance = { user_id:number; user__username:string; store_id:number; store__name:string; order_count:number; total_sales:string };
+export type InventoryOverview = { store_id:number; store_name:string; quantity:string; inventory_value:string; low_stock_count:number; product_count:number };
+export type LowStock = { store_id:number; store_name:string; product_id:number; product_name:string; quantity:string; min_quantity:string };
+export async function storeComparison(p?: ReportParams) { return (await api.get<StoreComparison[]>("/sales/sales-report/store_comparison/", query(p))).data; }
+export async function sellerPerformance(p?: ReportParams) { return (await api.get<SellerPerformance[]>("/sales/sales-report/seller_performance/", query(p))).data; }
+export async function inventoryOverview(p?: ReportParams) { return (await api.get<InventoryOverview[]>("/sales/sales-report/inventory_overview/", query(p))).data; }
+export async function lowStockReport(p?: ReportParams) { return (await api.get<LowStock[]>("/sales/sales-report/low_stock/", query(p))).data; }
