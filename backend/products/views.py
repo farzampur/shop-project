@@ -1146,7 +1146,8 @@ class InventoryLedgerView(APIView):
         transactions = (
             InventoryTransaction.objects
             .filter(
-                product_id=product_id
+                product_id=product_id,
+                store_id__in=user_store_ids(request.user),
             )
             .select_related(
                 "product",
@@ -2411,6 +2412,9 @@ class DebtorSuppliersView(APIView):
 
         suppliers = (
             Supplier.objects
+            .filter(
+                store_id__in=user_store_ids(request.user)
+            )
             .prefetch_related(
                 "transactions"
             )
@@ -2593,8 +2597,14 @@ class SupplierPurchaseReportView(APIView):
         # Query خریدها
         # -------------------------
 
-        purchases = Purchase.objects.filter(store_id__in=user_store_ids(self.request.user))
-
+        suppliers = (
+            Supplier.objects
+            .filter(
+                store_id__in=user_store_ids(request.user),
+                purchases__in=purchases,
+            )
+        )
+        
         if supplier_id:
             purchases = purchases.filter(
                 supplier_id=supplier_id
@@ -2811,7 +2821,8 @@ class SupplierPaymentReportView(APIView):
         suppliers = (
             Supplier.objects
             .filter(
-                transactions__in=transactions
+                store_id__in=user_store_ids(request.user),
+                transactions__in=transactions,
             )
             .annotate(
                 payment_count=Count(
@@ -2958,6 +2969,9 @@ class SupplierBalanceReportView(APIView):
 
         suppliers = (
             Supplier.objects
+            .filter(
+                store_id__in=user_store_ids(request.user)
+            )
             .prefetch_related(
                 "transactions"
             )
@@ -3059,6 +3073,9 @@ class SupplierComprehensiveReportView(APIView):
 
         suppliers = (
             Supplier.objects
+            .filter(
+                store_id__in=user_store_ids(request.user)
+            )
             .prefetch_related(
                 "purchases",
                 "transactions",
