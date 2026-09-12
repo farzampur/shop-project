@@ -46,6 +46,7 @@ CORS_ALLOWED_ORIGINS = _env_list(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173",
 )
+CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")
 
 # HTTPS hardening is secure-by-default in production and HTTP-friendly in development.
@@ -218,3 +219,8 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 }
+
+REFRESH_COOKIE_SECURE = _env_bool(
+    "REFRESH_COOKIE_SECURE",
+    not DEBUG,
+)

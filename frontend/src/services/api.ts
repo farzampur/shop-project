@@ -1,17 +1,27 @@
 import axios from "axios";
-import type { AxiosError, InternalAxiosRequestConfig } from "axios";
+import type {
+  AxiosError,
+  InternalAxiosRequestConfig,
+} from "axios";
+
 import { refreshAccessToken, logout } from "./authService";
 import { tokenService } from "./tokenService";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+  },
+  withCredentials: true,
 });
 
 let refreshPromise: Promise<string> | null = null;
 
 function isAuthEndpoint(url = "") {
-  return url.includes("/auth/token/") || url.includes("/auth/token/refresh/");
+  return (
+    url.includes("/auth/token/") ||
+    url.includes("/auth/token/refresh/")
+  );
 }
 
 async function refreshOnce(): Promise<string> {
@@ -20,26 +30,38 @@ async function refreshOnce(): Promise<string> {
       refreshPromise = null;
     });
   }
+
   return refreshPromise;
 }
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  // Authentication endpoints must not receive an old/expired bearer token.
-  if (isAuthEndpoint(config.url)) return config;
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    if (isAuthEndpoint(config.url)) {
+      return config;
+    }
 
-  const accessToken = tokenService.getAccessToken();
-  if (accessToken) {
-    // Axios 1.x uses AxiosHeaders internally; assigning through set() avoids
-    // silently losing the header when a plain object is supplied by a caller.
-    config.headers.set("Authorization", `Bearer ${accessToken}`);
+    const accessToken = tokenService.getAccessToken();
+
+    if (accessToken) {
+      config.headers.set(
+        "Authorization",
+        `Bearer ${accessToken}`
+      );
+    }
+
+    return config;
   }
-  return config;
-});
+);
 
 api.interceptors.response.use(
   (response) => response,
+
   async (error: AxiosError) => {
-    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & {
+          _retry?: boolean;
+        })
+      | undefined;
 
     if (
       error.response?.status !== 401 ||
@@ -50,17 +72,20 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const refreshToken = tokenService.getRefreshToken();
-    if (!refreshToken) return Promise.reject(error);
-
     originalRequest._retry = true;
 
     try {
       const newAccessToken = await refreshOnce();
-      originalRequest.headers.set("Authorization", `Bearer ${newAccessToken}`);
+
+      originalRequest.headers.set(
+        "Authorization",
+        `Bearer ${newAccessToken}`
+      );
+
       return api(originalRequest);
     } catch (refreshError) {
       void logout();
+
       return Promise.reject(refreshError);
     }
   }

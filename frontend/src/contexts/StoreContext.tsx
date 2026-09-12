@@ -9,6 +9,8 @@ import {
 import { getCurrentUser } from "../services/identityService";
 import type { CurrentUser, StoreAccess, StoreRole } from "../services/authTypes";
 
+import { tokenService } from "../services/tokenService";
+
 export type Store = StoreAccess;
 
 interface StoreContextType {
@@ -31,7 +33,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadIdentity = async () => {
-    const accessToken = localStorage.getItem("access_token");
+  const accessToken = tokenService.getAccessToken();
 
     if (!accessToken) {
       setUser(null);

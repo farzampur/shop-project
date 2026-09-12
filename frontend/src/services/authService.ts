@@ -9,11 +9,11 @@ const authApi = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true,
 });
 
 export interface LoginResponse {
   access: string;
-  refresh: string;
 }
 
 export interface RefreshResponse {
@@ -36,41 +36,27 @@ export async function login(
 }
 
 export async function refreshAccessToken(): Promise<string> {
-  const refreshToken = tokenService.getRefreshToken();
-
-  if (!refreshToken) {
-    throw new Error("Refresh token not found");
-  }
-
   const response = await authApi.post<RefreshResponse>(
     "/auth/token/refresh/",
-    {
-      refresh: refreshToken,
-    }
+    {}
   );
 
   const newAccessToken = response.data.access;
+
   tokenService.saveAccessToken(newAccessToken);
 
   return newAccessToken;
 }
 
 export function saveTokens(tokens: LoginResponse) {
-  tokenService.saveTokens(tokens.access, tokens.refresh);
+  tokenService.saveAccessToken(tokens.access);
 }
 
 export async function logout() {
-  const refreshToken = tokenService.getRefreshToken();
-
   try {
-    if (refreshToken) {
-      await authApi.post("/auth/token/blacklist/", {
-        refresh: refreshToken,
-      });
-    }
+    await authApi.post("/auth/token/blacklist/", {});
   } finally {
     tokenService.clearTokens();
     window.dispatchEvent(new Event("auth-change"));
   }
 }
-

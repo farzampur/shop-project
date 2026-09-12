@@ -31,7 +31,6 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
 
       try {
         if (tokenService.isAccessTokenExpired()) {
-          if (!tokenService.getRefreshToken()) throw new Error("Refresh token not found");
           await refreshAccessToken();
         }
         if (mounted) setAuthenticated(true);
