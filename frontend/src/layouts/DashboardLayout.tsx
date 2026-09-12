@@ -81,8 +81,8 @@ function DashboardLayout() {
     loading: storeLoading,
   } = useStore();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login", { replace: true });
   };
 

@@ -4,7 +4,7 @@ import { refreshAccessToken, logout } from "./authService";
 import { tokenService } from "./tokenService";
 
 const api = axios.create({
-  baseURL: "http://127.0.0.1:8000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -60,7 +60,7 @@ api.interceptors.response.use(
       originalRequest.headers.set("Authorization", `Bearer ${newAccessToken}`);
       return api(originalRequest);
     } catch (refreshError) {
-      logout();
+      void logout();
       return Promise.reject(refreshError);
     }
   }

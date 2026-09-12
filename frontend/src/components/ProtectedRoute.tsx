@@ -36,7 +36,7 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
         }
         if (mounted) setAuthenticated(true);
       } catch {
-        logout();
+        void logout();
         if (mounted) setAuthenticated(false);
       } finally {
         if (mounted) setChecking(false);

@@ -1,7 +1,8 @@
 import axios from "axios";
 import { tokenService } from "./tokenService";
 
-const AUTH_BASE_URL = "http://127.0.0.1:8000/api";
+const AUTH_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "/api";
 
 const authApi = axios.create({
   baseURL: AUTH_BASE_URL,
@@ -58,7 +59,18 @@ export function saveTokens(tokens: LoginResponse) {
   tokenService.saveTokens(tokens.access, tokens.refresh);
 }
 
-export function logout() {
-  tokenService.clearTokens();
-  window.dispatchEvent(new Event("auth-change"));
+export async function logout() {
+  const refreshToken = tokenService.getRefreshToken();
+
+  try {
+    if (refreshToken) {
+      await authApi.post("/auth/token/blacklist/", {
+        refresh: refreshToken,
+      });
+    }
+  } finally {
+    tokenService.clearTokens();
+    window.dispatchEvent(new Event("auth-change"));
+  }
 }
+

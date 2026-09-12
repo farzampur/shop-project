@@ -7,6 +7,7 @@ from django.conf.urls.static import static
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
+    TokenBlacklistView,
 )
 
 
@@ -30,7 +31,13 @@ urlpatterns = [
         TokenRefreshView.as_view(),
         name="token_refresh"
     ),
-
+    
+    path(
+        "api/auth/token/blacklist/",
+        TokenBlacklistView.as_view(),
+        name="token_blacklist",
+    ),
+    
     # Core API
     path(
         "api/",
