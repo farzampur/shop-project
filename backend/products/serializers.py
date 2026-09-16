@@ -1,11 +1,13 @@
 from rest_framework import serializers
 from django.db import transaction
+from django.db.models import Sum
+from decimal import Decimal
 from django.utils import timezone
 
 from core.fields import (
     JalaliDateTimeField,
 )
-from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, SupplierTransaction, StockTransfer, StockTransferItem, ProductPrice
+from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, ProductBatch, SupplierTransaction, StockTransfer, StockTransferItem, ProductPrice
 
 from .pricing import get_valid_product_prices
 
@@ -104,6 +106,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "effective_sale_price",
             "effective_price_type",
             "effective_price_type_display",
+            "purchase_price",
+            "sale_price",
         ]
 
     def _store_id(self):
@@ -117,14 +121,23 @@ class ProductSerializer(serializers.ModelSerializer):
         return get_valid_product_prices(obj, store_id, price_type=ProductPrice.TYPE_RETAIL).first()
 
     def get_effective_sale_price(self, obj):
-        price = self._active_retail(obj)
-        return str(price.amount if price else obj.sale_price)
+        from .pricing import get_effective_sale_price
+        store_id = self._store_id()
+        if not store_id:
+            return str(obj.sale_price)
+        return str(get_effective_sale_price(obj, store_id, price_type=ProductPrice.TYPE_RETAIL))
 
     def get_effective_price_type(self, obj):
+        store_id = self._store_id()
+        if not store_id:
+            return "base"
+        from .pricing import get_active_batch
+        if get_active_batch(obj, store_id):
+            return "retail"
         return "retail" if self._active_retail(obj) else "base"
 
     def get_effective_price_type_display(self, obj):
-        return "خرده‌فروشی" if self._active_retail(obj) else "قیمت پایه"
+        return "خرده‌فروشی" if self.get_effective_price_type(obj) == "retail" else "قیمت پایه"
 
     def get_inventory_quantity(self, obj):
         request = self.context.get("request")
@@ -330,6 +343,48 @@ class PurchaseItemSerializer(
         source="product.name",
         read_only=True
     )
+    returned_quantity = serializers.SerializerMethodField()
+    returnable_quantity = serializers.SerializerMethodField()
+    sale_price = serializers.DecimalField(max_digits=15, decimal_places=2, required=False, default=Decimal("0"))
+    batch_id = serializers.SerializerMethodField()
+    batch_remaining_quantity = serializers.SerializerMethodField()
+
+    def get_returned_quantity(self, obj):
+        total = (
+            PurchaseReturn.objects
+            .filter(purchase=obj.purchase, product=obj.product)
+            .aggregate(total=Sum("quantity"))["total"]
+            or Decimal("0.000")
+        )
+        return f"{total:.3f}"
+
+    def get_batch_id(self, obj):
+        try:
+            return obj.batch.id
+        except ProductBatch.DoesNotExist:
+            return None
+
+    def get_batch_remaining_quantity(self, obj):
+        try:
+            return f"{obj.batch.remaining_quantity:.3f}"
+        except ProductBatch.DoesNotExist:
+            return None
+
+    def get_returnable_quantity(self, obj):
+        returned = (
+            PurchaseReturn.objects
+            .filter(purchase=obj.purchase, product=obj.product)
+            .aggregate(total=Sum("quantity"))["total"]
+            or Decimal("0.000")
+        )
+        remaining = max(obj.quantity - returned, Decimal("0.000"))
+        try:
+            remaining = min(remaining, obj.batch.remaining_quantity)
+        except ProductBatch.DoesNotExist:
+            # Purchases created before Batch support have no batch.
+            # Their returnable quantity is still purchase quantity minus returns.
+            pass
+        return f"{remaining:.3f}"
 
     class Meta:
 
@@ -342,11 +397,20 @@ class PurchaseItemSerializer(
             "quantity",
             "unit_price",
             "total_price",
+            "returned_quantity",
+            "returnable_quantity",
+            "sale_price",
+            "batch_id",
+            "batch_remaining_quantity",
         ]
 
         read_only_fields = [
             "id",
             "total_price",
+            "returned_quantity",
+            "returnable_quantity",
+            "batch_id",
+            "batch_remaining_quantity",
         ]
 
 
@@ -528,6 +592,7 @@ class PurchaseSerializer(
                 product=item_data["product"],
                 quantity=quantity,
                 unit_price=unit_price,
+                sale_price=item_data.get("sale_price", Decimal("0")),
                 total_price=total_price,
             )
 
@@ -599,6 +664,7 @@ class PurchaseSerializer(
                 product=item_data["product"],
                 quantity=quantity,
                 unit_price=unit_price,
+                sale_price=item_data.get("sale_price", Decimal("0")),
                 total_price=total_price,
             )
 

@@ -268,9 +268,16 @@ function Purchases() {
 		  error.response?.data
 		);
 
+        const responseData = error.response?.data;
+        const apiMessage =
+          responseData?.detail ||
+          (Array.isArray(responseData) ? responseData[0] : null) ||
+          (responseData && typeof responseData === "object"
+            ? Object.values(responseData).flat().join(" ")
+            : null);
+
 		setError(
-		  error.response?.data?.detail ||
-			"خطا در ثبت برگشت خرید."
+          String(apiMessage || "خطا در ثبت برگشت خرید.")
 		);
 	  }
 	};
@@ -718,8 +725,10 @@ function Purchases() {
 				  <MenuItem
 					key={item.id}
 					value={item.product}
+                    disabled={Number(item.returnable_quantity ?? item.quantity) <= 0}
 				  >
 					{item.product_name}
+                    {Number(item.returnable_quantity ?? item.quantity) <= 0 ? " — کامل برگشت شده" : ""}
 				  </MenuItem>
 				))}
 			  </Select>
@@ -741,10 +750,10 @@ function Purchases() {
 
 				if (
 				  selectedItem &&
-				  Number(value) > Number(selectedItem.quantity)
+				  Number(value) > Number(selectedItem.returnable_quantity ?? selectedItem.quantity)
 				) {
 				  setReturnQuantity(
-					String(selectedItem.quantity)
+					String(selectedItem.returnable_quantity ?? selectedItem.quantity)
 				  );
 				  return;
 				}

@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import (
     Category, Product, Inventory, InventoryTransaction,
     Supplier, Purchase, PurchaseItem, SupplierTransaction, PurchaseReturn,
-    StockTransfer, StockTransferItem, ProductPrice,
+    StockTransfer, StockTransferItem, ProductPrice, ProductBatch,
 )
 
 MODEL_NAMES = {
@@ -18,6 +18,7 @@ MODEL_NAMES = {
     StockTransfer: ("انتقال کالا", "انتقال کالاها"),
     StockTransferItem: ("آیتم انتقال", "آیتم‌های انتقال"),
     ProductPrice: ("قیمت کالا", "قیمت‌های کالا"),
+    ProductBatch: ("بچ کالا", "بچ‌های کالا"),
 }
 for model, names in MODEL_NAMES.items():
     model._meta.verbose_name, model._meta.verbose_name_plural = names
@@ -33,7 +34,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "barcode", "category", "unit", "purchase_price", "sale_price", "is_active", "updated_at")
+    list_display = ("id", "name", "barcode", "category", "unit", "is_active", "updated_at")
     list_filter = ("category__store", "category", "is_active", "unit", "created_at")
     search_fields = ("name", "barcode", "category__name")
     ordering = ("name", "id")
@@ -86,7 +87,7 @@ class PurchaseAdmin(admin.ModelAdmin):
 
 @admin.register(PurchaseItem)
 class PurchaseItemAdmin(admin.ModelAdmin):
-    list_display = ("id", "purchase", "product", "quantity", "unit_price", "total_price")
+    list_display = ("id", "purchase", "product", "quantity", "unit_price", "sale_price", "total_price")
     list_filter = ("purchase__store", "product__category")
     search_fields = ("product__name", "product__barcode", "purchase__invoice_number")
     ordering = ("-id",)

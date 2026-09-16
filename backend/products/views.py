@@ -4,7 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, MethodNotAllowed
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Count, Avg, Max, Sum, Q, F, DecimalField, ExpressionWrapper, Value
@@ -37,7 +37,9 @@ from .models import (
     SupplierTransaction,
     StockTransfer,
     StockTransferItem,
+    StockTransferBatchAllocation,
     ProductPrice,
+    ProductBatch,
 )
 from sales.models import (
     CashBox,
@@ -255,6 +257,21 @@ class InventoryViewSet(viewsets.ModelViewSet):
 
     serializer_class = InventorySerializer
 
+    # Inventory quantity is a derived/accounting value. It may only change
+    # through the dedicated adjustment endpoint or business services that
+    # create the corresponding InventoryTransaction.
+    def create(self, request, *args, **kwargs):
+        raise MethodNotAllowed("POST", detail="ایجاد مستقیم موجودی مجاز نیست.")
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed("PUT", detail="ویرایش مستقیم موجودی مجاز نیست.")
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed("PATCH", detail="ویرایش مستقیم موجودی مجاز نیست.")
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE", detail="حذف مستقیم موجودی مجاز نیست.")
+
     permission_classes = [
         IsAuthenticated,
         InventoryPermission,
@@ -316,6 +333,10 @@ class InventoryViewSet(viewsets.ModelViewSet):
         inventory = self.get_object()
         if not has_store_access(request.user, inventory.store_id, {"manager", "warehouse"}):
             raise PermissionDenied("شما مجوز تعدیل موجودی را ندارید.")
+
+        # Serialize concurrent adjustments for the same inventory row so the
+        # delta recorded in the ledger matches the quantity actually stored.
+        inventory = Inventory.objects.select_for_update().get(pk=inventory.pk)
         try:
             new_quantity = Decimal(str(request.data.get("quantity")))
         except Exception:
@@ -658,6 +679,15 @@ class PurchaseViewSet(
             user=self.request.user
         )
 
+        # اگر خرید هنگام ثبت «دریافت‌شده» اعلام شده باشد، باید دقیقاً
+        # همان منطق دریافت نهایی اجرا شود؛ صرفاً received=True کردن خرید
+        # نباید بدون افزایش موجودی باقی بماند. PurchaseService این عملیات
+        # را اتمیک و idempotent انجام می‌دهد.
+        if purchase.received:
+            purchase.received = False
+            purchase.save(update_fields=["received", "updated_at"])
+            purchase = PurchaseService.receive_purchase(purchase)
+
         if (
             purchase.received
             and purchase.total_amount > 0
@@ -671,16 +701,15 @@ class PurchaseViewSet(
         self,
         serializer
     ):
+        # Lock the purchase row so generic edits cannot race with receive.
+        purchase = (
+            Purchase.objects
+            .select_for_update()
+            .get(pk=self.get_object().pk)
+        )
 
-        purchase = self.get_object()
-
-        # خرید دریافت‌شده قابل ویرایش نیست
+        # A received purchase is immutable through the generic endpoint.
         if purchase.received:
-
-            from rest_framework.exceptions import (
-                ValidationError
-            )
-
             raise ValidationError(
                 {
                     "detail": (
@@ -690,7 +719,16 @@ class PurchaseViewSet(
                 }
             )
 
-        old_received = purchase.received
+        # received=True is a state transition with stock/batch/ledger side effects.
+        # It must only be performed by the dedicated receive action.
+        if serializer.validated_data.get("received") is True:
+            raise ValidationError(
+                {
+                    "received": (
+                        "دریافت خرید فقط از طریق مسیر اختصاصی دریافت مجاز است."
+                    )
+                }
+            )
 
         store = serializer.validated_data.get(
             "store",
@@ -700,32 +738,20 @@ class PurchaseViewSet(
         has_access = (
             self.request.user.user_stores
             .filter(
-                store=store
+                store=store,
+                is_active=True,
             )
             .exists()
         )
 
         if not has_access:
-
-            from rest_framework.exceptions import (
-                PermissionDenied
-            )
-
+            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 "شما به این فروشگاه "
                 "دسترسی ندارید."
             )
 
-        purchase = serializer.save()
-
-        if (
-            not old_received
-            and purchase.received
-            and purchase.total_amount > 0
-        ):
-            self._sync_supplier_debt(
-                purchase
-            )
+        serializer.save()
 
     @transaction.atomic
     def perform_destroy(
@@ -977,10 +1003,6 @@ class PurchaseItemViewSet(
         # بررسی تعلق محصول به همان فروشگاه
         if product.category.store_id != purchase.store_id:
 
-            from rest_framework.exceptions import (
-                ValidationError
-            )
-
             raise ValidationError(
                 {
                     "product": (
@@ -990,9 +1012,64 @@ class PurchaseItemViewSet(
                 }
             )
 
+        # خرید دریافت‌شده دیگر نباید با افزودن قلم جدید تغییر کند؛
+        # چون دریافت قبلی قبلاً Inventory / Batch / Ledger را ثبت کرده است.
+        purchase = (
+            Purchase.objects
+            .select_for_update()
+            .get(pk=purchase.pk)
+        )
+
+        if purchase.received:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "خرید دریافت‌شده قابل تغییر نیست."
+                    )
+                }
+            )
+
         serializer.save(
             purchase=purchase
         )
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        purchase = (
+            Purchase.objects
+            .select_for_update()
+            .get(pk=self.get_object().purchase_id)
+        )
+
+        if purchase.received:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "قلم خرید دریافت‌شده قابل ویرایش نیست."
+                    )
+                }
+            )
+
+        serializer.save()
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        purchase = (
+            Purchase.objects
+            .select_for_update()
+            .get(pk=instance.purchase_id)
+        )
+
+        if purchase.received:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "قلم خرید دریافت‌شده قابل حذف نیست."
+                    )
+                }
+            )
+
+        instance.delete()
         
         
 class LowStockReportView(
@@ -2002,12 +2079,29 @@ class SupplierTransactionViewSet(
         )
 
 
+    def create(self, request, *args, **kwargs):
+        # A direct supplier payment must fail explicitly as a financial
+        # integrity violation (400), while all other generic transaction
+        # creation attempts remain disabled (405).
+        if request.data.get("transaction_type") == "payment":
+            raise ValidationError(
+                "پرداخت به تأمین‌کننده فقط از طریق مسیر ثبت پرداخت و همراه با ثبت تراکنش صندوق مجاز است."
+            )
+        raise MethodNotAllowed("POST")
+
+    def update(self, request, *args, **kwargs):
+        raise MethodNotAllowed("PUT")
+
+    def partial_update(self, request, *args, **kwargs):
+        raise MethodNotAllowed("PATCH")
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE")
+
     def perform_create(self, serializer):
-        supplier = serializer.validated_data["supplier"]
-        if not has_store_access(self.request.user, supplier.store_id, {"manager", "warehouse"}):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("شما مجوز ثبت تراکنش تأمین‌کننده را ندارید.")
-        serializer.save()
+        # Defensive guard: system supplier-ledger entries must be created by
+        # their owning business workflows, never through this generic endpoint.
+        raise MethodNotAllowed("POST")
 
 class SupplierPaymentViewSet(
     viewsets.ModelViewSet
@@ -2048,6 +2142,21 @@ class SupplierPaymentViewSet(
             )
             .select_related("supplier")
             .order_by("-created_at", "-id")
+        )
+
+    def update(self, request, *args, **kwargs):
+        raise ValidationError(
+            "پرداخت ثبت‌شده به تأمین‌کننده قابل ویرایش نیست."
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        raise ValidationError(
+            "پرداخت ثبت‌شده به تأمین‌کننده قابل ویرایش نیست."
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        raise ValidationError(
+            "پرداخت ثبت‌شده به تأمین‌کننده قابل حذف نیست."
         )
 
     @transaction.atomic
@@ -2195,6 +2304,7 @@ class SupplierPaymentViewSet(
             transaction_type="payment",
             amount=amount,
             reference_id=supplier_tx.id,
+            reference_type="supplier_transaction",
             description=(
                 f"پرداخت به تأمین‌کننده "
                 f"{supplier.name}"
@@ -3303,10 +3413,8 @@ class PurchaseReturnViewSet(
             ]
         )
 
-        unit_price = (
-            serializer.validated_data[
-                "unit_price"
-            ]
+        requested_unit_price = (
+            serializer.validated_data.get("unit_price")
         )
 
         # کنترل دسترسی فروشگاه
@@ -3355,6 +3463,18 @@ class PurchaseReturnViewSet(
             )
 
         # -------------------------
+        # قفل قلم خرید قبل از محاسبه مانده برگشت
+        # -------------------------
+        # دو درخواست هم‌زمان برای یک قلم خرید نباید بتوانند هر دو
+        # یک مانده قدیمی را ببینند و مجموع برگشت را از مقدار خرید
+        # بیشتر کنند. قفل روی PurchaseItem مرجع منطقی این محاسبه است.
+        purchase_item = (
+            PurchaseItem.objects
+            .select_for_update()
+            .get(pk=purchase_item.pk)
+        )
+
+        # -------------------------
         # میزان قبلاً برگشت‌داده‌شده
         # -------------------------
 
@@ -3377,7 +3497,12 @@ class PurchaseReturnViewSet(
 
         if quantity > available_for_return:
             raise ValidationError(
-                "مقدار برگشتی بیشتر از مقدار خریداری‌شده است."
+                {
+                    "detail": (
+                        "مقدار برگشتی بیشتر از مقدار باقی‌مانده قابل برگشت است. "
+                        f"حداکثر مقدار قابل برگشت: {available_for_return}"
+                    )
+                }
             )
 
         # -------------------------
@@ -3404,13 +3529,26 @@ class PurchaseReturnViewSet(
                 "موجودی انبار برای این برگشت کافی نیست."
             )
 
+        # برگشت خرید باید از همان بچ خرید انجام شود.
+        batch = (
+            ProductBatch.objects.select_for_update()
+            .filter(purchase_item=purchase_item, store=purchase.store)
+            .first()
+        )
+        # Purchases created before Batch support have no batch record.
+        # Keep their existing return behavior; new received purchases always have a batch.
+        if batch is not None and batch.remaining_quantity < quantity:
+            raise ValidationError(
+                f"موجودی باقی‌مانده این بچ برای برگشت کافی نیست. مقدار قابل برگشت: {batch.remaining_quantity}"
+            )
+
         # -------------------------
         # ثبت برگشت
         # -------------------------
 
         purchase_return = serializer.save(
             created_by=self.request.user,
-            unit_price=unit_price,
+            unit_price=purchase_item.unit_price,
         )
 
         # -------------------------
@@ -3425,6 +3563,10 @@ class PurchaseReturnViewSet(
                 "updated_at",
             ]
         )
+
+        if batch is not None:
+            batch.remaining_quantity -= quantity
+            batch.save(update_fields=["remaining_quantity", "updated_at"])
 
         # -------------------------
         # ثبت گردش انبار
@@ -3455,6 +3597,30 @@ class PurchaseReturnViewSet(
             description=(
                 f"برگشت خرید #{purchase.id}"
             ),
+        )
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        raise ValidationError(
+            {
+                "detail": (
+                    "برگشت خرید ثبت‌شده قابل ویرایش نیست. "
+                    "برای حفظ یکپارچگی موجودی و دفتر مالی، "
+                    "برگشت جدید باید به‌صورت عملیات مستقل ثبت شود."
+                )
+            }
+        )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        raise ValidationError(
+            {
+                "detail": (
+                    "برگشت خرید ثبت‌شده قابل حذف نیست. "
+                    "برای حفظ یکپارچگی موجودی و دفتر مالی، "
+                    "این رکورد باید به‌عنوان سابقه قطعی باقی بماند."
+                )
+            }
         )
 
 
@@ -3643,6 +3809,7 @@ class SupplierSettleView(APIView):
             transaction_type="payment",
             amount=balance,
             reference_id=supplier_tx.id,
+            reference_type="supplier_transaction",
             description=(
                 f"تسویه کامل تأمین‌کننده "
                 f"{supplier.name}"
@@ -4099,6 +4266,44 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             inv = Inventory.objects.select_for_update().get(product=item.product, store=transfer.source_store)
             if inv.quantity < item.quantity:
                 raise ValidationError(f"موجودی «{item.product.name}» کافی نیست.")
+
+            # اگر برای این کالا در مبدأ بچ داریم، انتقال باید دقیقاً از همان بچ‌ها
+            # تخصیص داده شود تا قیمت خرید/فروش در مقصد از بین نرود.
+            source_batches = list(
+                ProductBatch.objects.select_for_update()
+                .filter(
+                    product=item.product,
+                    store=transfer.source_store,
+                    remaining_quantity__gt=0,
+                )
+                .order_by("received_at", "id")
+            )
+            has_batches = bool(source_batches)
+            remaining_to_allocate = item.quantity
+
+            if has_batches:
+                total_batch_remaining = sum(
+                    (batch.remaining_quantity for batch in source_batches),
+                    Decimal("0"),
+                )
+                if total_batch_remaining < item.quantity:
+                    raise ValidationError(
+                        f"موجودی بچ‌های «{item.product.name}» برای انتقال کافی نیست."
+                    )
+
+                for batch in source_batches:
+                    if remaining_to_allocate <= 0:
+                        break
+                    allocated = min(batch.remaining_quantity, remaining_to_allocate)
+                    StockTransferBatchAllocation.objects.create(
+                        transfer_item=item,
+                        source_batch=batch,
+                        quantity=allocated,
+                    )
+                    batch.remaining_quantity -= allocated
+                    batch.save(update_fields=["remaining_quantity", "updated_at"])
+                    remaining_to_allocate -= allocated
+
             inv.quantity -= item.quantity
             inv.save(update_fields=["quantity", "updated_at"])
             InventoryTransaction.objects.create(product=item.product, store=transfer.source_store, transaction_type=InventoryTransaction.TYPE_TRANSFER_OUT, quantity=-item.quantity, reference_id=transfer.id, description=f"ارسال انتقال #{transfer.id}")
@@ -4120,6 +4325,27 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             inv, _ = Inventory.objects.select_for_update().get_or_create(product=item.product, store=transfer.destination_store, defaults={"quantity": Decimal("0")})
             inv.quantity += item.quantity
             inv.save(update_fields=["quantity", "updated_at"])
+
+            # برای انتقال‌هایی که از بچ مبدأ تخصیص داده شده‌اند، در مقصد بچ مستقل
+            # ساخته می‌شود و قیمت‌های همان بچ حفظ می‌شوند. برای انتقال‌های Legacy
+            # بدون بچ، رفتار قبلی عمداً حفظ می‌شود.
+            allocations = list(
+                item.batch_allocations.select_related("source_batch").all()
+            )
+            for allocation in allocations:
+                source_batch = allocation.source_batch
+                ProductBatch.objects.create(
+                    purchase_item=None,
+                    source_batch=source_batch,
+                    product=item.product,
+                    store=transfer.destination_store,
+                    quantity=allocation.quantity,
+                    remaining_quantity=allocation.quantity,
+                    purchase_price=source_batch.purchase_price,
+                    sale_price=source_batch.sale_price,
+                    received_at=timezone.now(),
+                )
+
             InventoryTransaction.objects.create(product=item.product, store=transfer.destination_store, transaction_type=InventoryTransaction.TYPE_TRANSFER_IN, quantity=item.quantity, reference_id=transfer.id, description=f"دریافت انتقال #{transfer.id}")
         transfer.status = StockTransfer.STATUS_RECEIVED
         transfer.received_at = timezone.now()

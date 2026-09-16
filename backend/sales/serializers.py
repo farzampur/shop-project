@@ -561,11 +561,13 @@ class CashBoxTransactionSerializer(
             "amount",
             "description",
             "reference_id",
+            "reference_type",
             "created_at",
         ]
 
         read_only_fields = [
             "id",
+            "reference_type",
             "created_at",
         ]
 

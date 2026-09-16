@@ -10,6 +10,13 @@ const authApi = axios.create({
     "Content-Type": "application/json",
   },
   withCredentials: true,
+
+  // Django CSRF defaults
+  xsrfCookieName: "csrftoken",
+  xsrfHeaderName: "X-CSRFToken",
+
+  // Required when frontend/API are different origins in development.
+  withXSRFToken: true,
 });
 
 export interface LoginResponse {
@@ -18,6 +25,29 @@ export interface LoginResponse {
 
 export interface RefreshResponse {
   access: string;
+}
+
+let csrfReady = false;
+let csrfPromise: Promise<void> | null = null;
+let refreshPromise: Promise<string> | null = null;
+
+async function ensureCsrfCookie(): Promise<void> {
+  if (csrfReady) {
+    return;
+  }
+
+  if (!csrfPromise) {
+    csrfPromise = authApi
+      .get("/auth/csrf/")
+      .then(() => {
+        csrfReady = true;
+      })
+      .finally(() => {
+        csrfPromise = null;
+      });
+  }
+
+  await csrfPromise;
 }
 
 export async function login(
@@ -35,17 +65,27 @@ export async function login(
   return response.data;
 }
 
-export async function refreshAccessToken(): Promise<string> {
-  const response = await authApi.post<RefreshResponse>(
-    "/auth/token/refresh/",
-    {}
-  );
+export function refreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      await ensureCsrfCookie();
 
-  const newAccessToken = response.data.access;
+      const response = await authApi.post<RefreshResponse>(
+        "/auth/token/refresh/",
+        {}
+      );
 
-  tokenService.saveAccessToken(newAccessToken);
+      const newAccessToken = response.data.access;
 
-  return newAccessToken;
+      tokenService.saveAccessToken(newAccessToken);
+
+      return newAccessToken;
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
 }
 
 export function saveTokens(tokens: LoginResponse) {
@@ -54,7 +94,12 @@ export function saveTokens(tokens: LoginResponse) {
 
 export async function logout() {
   try {
-    await authApi.post("/auth/token/blacklist/", {});
+    await ensureCsrfCookie();
+
+    await authApi.post(
+      "/auth/token/blacklist/",
+      {}
+    );
   } finally {
     tokenService.clearTokens();
     window.dispatchEvent(new Event("auth-change"));

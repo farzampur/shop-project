@@ -13,7 +13,10 @@ export interface PurchaseItem {
   product_name: string;
   quantity: string;
   unit_price: string;
+  sale_price: string;
   total_price: string;
+  returned_quantity?: string;
+  returnable_quantity?: string;
 }
 
 export interface Purchase {
@@ -36,6 +39,7 @@ export interface PurchaseItemInput {
   product: number;
   quantity: string;
   unit_price: string;
+  sale_price: string;
 }
 
 export interface PurchaseWriteData {

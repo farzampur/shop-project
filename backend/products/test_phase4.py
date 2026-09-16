@@ -18,6 +18,8 @@ from products.models import (
     Supplier,
     SupplierTransaction,
 )
+from products.serializers import PurchaseItemSerializer
+
 from products.views import (
     InventoryViewSet,
     InventoryTransactionViewSet,
@@ -190,6 +192,37 @@ class Phase4SupplierTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Inventory.objects.get(product=self.product, store=self.store_a).quantity, Decimal("6"))
 
+    def test_create_received_purchase_receives_stock_and_creates_debt(self):
+        request = APIRequestFactory().post(
+            "/api/products/purchases/",
+            {
+                "supplier": self.supplier.id,
+                "store": self.store_a.id,
+                "invoice_number": "P4-CREATE-RECEIVED",
+                "received": True,
+                "items": [{"product": self.product.id, "quantity": "6", "unit_price": "80"}],
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        response = PurchaseViewSet.as_view({"post": "create"})(request)
+
+        self.assertEqual(response.status_code, 201)
+        purchase = Purchase.objects.get(id=response.data["id"])
+        self.assertTrue(purchase.received)
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store_a).quantity, Decimal("6"))
+        self.assertEqual(
+            InventoryTransaction.objects.filter(
+                product=self.product, store=self.store_a,
+                transaction_type=InventoryTransaction.TYPE_PURCHASE, reference_id=purchase.id,
+            ).count(),
+            1,
+        )
+        debt = SupplierTransaction.objects.get(
+            supplier=self.supplier, transaction_type="purchase", reference_id=purchase.id
+        )
+        self.assertEqual(debt.amount, Decimal("480"))
+
     def test_supplier_payment_reduces_cashbox_and_supplier_debt(self):
         from sales.models import CashBox, CashBoxTransaction
         cashbox = CashBox.objects.create(store=self.store_a, name="Main", balance=Decimal("1000"))
@@ -259,3 +292,37 @@ class Phase4SupplierTests(TestCase):
         response = PurchaseReturnViewSet.as_view({"post": "create"})(request)
         self.assertEqual(response.status_code, 400)
         self.assertFalse(PurchaseReturn.objects.filter(purchase=purchase).exists())
+
+    def test_purchase_return_respects_remaining_quantity_after_previous_return(self):
+        Inventory.objects.create(product=self.product, store=self.store_a, quantity=Decimal("10"))
+        purchase = Purchase.objects.create(
+            supplier=self.supplier, store=self.store_a, user=self.user, received=True
+        )
+        PurchaseItem.objects.create(
+            purchase=purchase, product=self.product, quantity=Decimal("5"), unit_price=Decimal("80")
+        )
+
+        first_request = APIRequestFactory().post(
+            "/api/products/purchase-returns/",
+            {"purchase": purchase.id, "product": self.product.id, "quantity": "3", "unit_price": "80"},
+            format="json",
+        )
+        force_authenticate(first_request, user=self.user)
+        first_response = PurchaseReturnViewSet.as_view({"post": "create"})(first_request)
+        self.assertEqual(first_response.status_code, 201)
+
+        second_request = APIRequestFactory().post(
+            "/api/products/purchase-returns/",
+            {"purchase": purchase.id, "product": self.product.id, "quantity": "3", "unit_price": "80"},
+            format="json",
+        )
+        force_authenticate(second_request, user=self.user)
+        second_response = PurchaseReturnViewSet.as_view({"post": "create"})(second_request)
+        self.assertEqual(second_response.status_code, 400)
+        self.assertIn("detail", second_response.data)
+        self.assertIn("2.000", second_response.data["detail"])
+
+        item = purchase.items.get(product=self.product)
+        serialized_item = PurchaseItemSerializer(item).data
+        self.assertEqual(serialized_item["returned_quantity"], "3.000")
+        self.assertEqual(serialized_item["returnable_quantity"], "2.000")

@@ -34,7 +34,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../contexts/StoreContext";
 import { canAccessRoute, type AppRouteKey } from "../services/routePermissions";
 
-const drawerWidth = 240;
+const drawerWidth = 220;
 
 type MenuItem = {
   key: AppRouteKey;
@@ -99,7 +99,7 @@ function DashboardLayout() {
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", direction: "rtl" }}>
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar>
+        <Toolbar sx={{ minHeight: 56 }}>
           <Typography variant="h6" sx={{ mr: 2 }}>فروشگاه:</Typography>
           <FormControl size="small" sx={{ minWidth: 220, backgroundColor: "white", borderRadius: 1 }}>
             <Select
@@ -137,14 +137,14 @@ function DashboardLayout() {
           "& .MuiDrawer-paper": {
             width: drawerWidth,
             boxSizing: "border-box",
-            top: 64,
-            height: "calc(100vh - 64px)",
+            top: 56,
+            height: "calc(100vh - 56px)",
             display: "flex",
             flexDirection: "column",
           },
         }}
       >
-        <List sx={{ pt: 2, flex: 1, overflowY: "auto" }}>
+        <List sx={{ pt: 1, flex: 1, overflowY: "auto" }}>
           {visibleMenuItems.map((item) => {
             const selected = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
@@ -152,10 +152,10 @@ function DashboardLayout() {
                 key={item.path}
                 selected={selected}
                 onClick={() => navigate(item.path)}
-                sx={{ minHeight: 44 }}
+                sx={{ minHeight: 38, py: 0.25 }}
               >
-                <ListItemIcon sx={{ minWidth: 38 }}>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.88rem" } }} />
+                <ListItemIcon sx={{ minWidth: 34, "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
+                <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />
               </ListItemButton>
             );
           })}
@@ -164,15 +164,15 @@ function DashboardLayout() {
         <Box sx={{ borderTop: "1px solid #e8edf5", p: 1, backgroundColor: "rgba(255,255,255,.96)" }}>
           <ListItemButton
             onClick={handleLogout}
-            sx={{ minHeight: 46, color: "error.main", fontWeight: 700 }}
+            sx={{ minHeight: 40, py: 0.25, color: "error.main", fontWeight: 700 }}
           >
-            <ListItemIcon sx={{ minWidth: 38, color: "inherit" }}><LogoutIcon /></ListItemIcon>
-            <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.9rem", fontWeight: 700 } }} />
+            <ListItemIcon sx={{ minWidth: 34, color: "inherit", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
+            <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />
           </ListItemButton>
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 2, mt: 7 }}>
         <Outlet />
       </Box>
     </Box>

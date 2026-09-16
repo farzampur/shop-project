@@ -366,6 +366,21 @@ class OrderItem(models.Model):
         verbose_name_plural = "آیتم‌های سفارش"
 
 
+class OrderItemBatch(models.Model):
+    """رابط سفارش و بچ‌هایی که واقعاً برای آن مصرف شده‌اند."""
+    order_item = models.ForeignKey(
+        OrderItem, on_delete=models.CASCADE, related_name="batch_allocations"
+    )
+    batch = models.ForeignKey(
+        "products.ProductBatch", on_delete=models.PROTECT, related_name="order_allocations"
+    )
+    quantity = models.DecimalField(max_digits=15, decimal_places=3)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["order_item", "batch"], name="unique_order_item_batch")
+        ]
+
 
 class Payment(models.Model):
     """Single settlement allocation for an order."""
@@ -577,6 +592,15 @@ class CashBoxTransaction(models.Model):
         ("payment", "پرداخت"),
     ]
 
+    REFERENCE_TYPES = [
+        ("manual", "تعدیل دستی"),
+        ("order", "سفارش/فروش"),
+        ("expense", "هزینه"),
+        ("customer_transaction", "تراکنش مشتری"),
+        ("supplier_transaction", "تراکنش تأمین‌کننده"),
+        ("cash_transfer", "انتقال صندوق"),
+    ]
+
     cashbox = models.ForeignKey(
         CashBox,
         on_delete=models.CASCADE,
@@ -600,6 +624,13 @@ class CashBoxTransaction(models.Model):
     reference_id = models.PositiveIntegerField(
         null=True,
         blank=True
+    )
+
+    reference_type = models.CharField(
+        max_length=30,
+        choices=REFERENCE_TYPES,
+        null=True,
+        blank=True,
     )
 
     created_at = models.DateTimeField(

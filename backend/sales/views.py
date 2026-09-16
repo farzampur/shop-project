@@ -3,7 +3,7 @@ from django.db.models.functions import TruncDate, TruncMonth, Coalesce
 from django.db import transaction
 from datetime import datetime
 from rest_framework import viewsets
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import ValidationError, PermissionDenied, MethodNotAllowed
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
@@ -48,7 +48,7 @@ from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
 from products.models import Product, Inventory, SupplierTransaction
 from core.audit import audit
-from products.pricing import get_effective_sale_price
+from products.pricing import get_effective_sale_price, get_active_batch
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -245,6 +245,17 @@ class CartItemViewSet(viewsets.ModelViewSet):
                 f"مقدار درخواستی: {quantity} واحد."
             )
 
+        active_batch = get_active_batch(product, cart.store_id) if price_type == "retail" else None
+        if price_type == "retail" and active_batch is None:
+            raise ValidationError({"price_type": "برای این کالا بچ قابل فروش فعالی وجود ندارد."})
+        if active_batch is not None and quantity > active_batch.remaining_quantity:
+            raise ValidationError({
+                "quantity": (
+                    f"مقدار فروش خرده‌فروشی نمی‌تواند از باقی‌مانده بچ فعلی بیشتر باشد. "
+                    f"باقی‌مانده بچ: {active_batch.remaining_quantity}"
+                )
+            })
+
         unit_price = get_effective_sale_price(product, cart.store_id, price_type=price_type)
         if unit_price is None:
             raise ValidationError({"price_type": "برای این نوع قیمت، قیمت فعال و معتبر وجود ندارد."})
@@ -312,6 +323,15 @@ class CartItemViewSet(viewsets.ModelViewSet):
                 f"حداکثر تخفیف مجاز برای شما "
                 f"{max_discount}% است."
             )
+
+        if item.price_type == "retail":
+            active_batch = get_active_batch(item.product, item.cart.store_id)
+            if active_batch is None:
+                raise ValidationError("برای این کالا بچ قابل فروش فعالی وجود ندارد.")
+            if new_quantity > active_batch.remaining_quantity:
+                raise ValidationError(
+                    f"مقدار خرده‌فروشی نمی‌تواند از باقی‌مانده بچ فعلی بیشتر باشد: {active_batch.remaining_quantity}"
+                )
 
         inventory = item.product.inventories.filter(
             store=item.cart.store
@@ -769,13 +789,13 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
 
     def update(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("PUT", detail="تراکنش ثبت‌شده صندوق قابل ویرایش نیست.")
 
     def partial_update(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("PATCH", detail="تراکنش ثبت‌شده صندوق قابل ویرایش نیست.")
 
     def destroy(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("DELETE", detail="تراکنش ثبت‌شده صندوق قابل حذف نیست.")
 
     def get_queryset(self):
 
@@ -819,6 +839,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             transaction_type="payment",
             amount=expense.amount,
             reference_id=expense.id,
+            reference_type="expense",
             description=(
                 f"Expense: {expense.title}"
             )
@@ -979,6 +1000,7 @@ class CustomerTransactionViewSet(viewsets.ModelViewSet):
             CashBoxTransaction.objects.create(
                 cashbox=cashbox, transaction_type="receive",
                 amount=customer_tx.amount, reference_id=customer_tx.id,
+                reference_type="customer_transaction",
                 description=f"دریافت از مشتری {customer_tx.customer}",
             )
         else:
@@ -1227,6 +1249,16 @@ class CashBoxViewSet(
     permission_classes = [IsAuthenticated, StoreRolePermission]
 
 
+    def update(self, request, *args, **kwargs):
+        if "balance" in request.data:
+            raise ValidationError("مانده صندوق فقط از طریق ثبت تراکنش مالی قابل تغییر است.")
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        if "balance" in request.data:
+            raise ValidationError("مانده صندوق فقط از طریق ثبت تراکنش مالی قابل تغییر است.")
+        return super().partial_update(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         if instance.balance != 0 or instance.transactions.exists() or instance.payments.exists():
             raise ValidationError("صندوق دارای سابقه مالی است و قابل حذف نیست.")
@@ -1270,13 +1302,13 @@ class CashBoxTransactionViewSet(
 
 
     def update(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("PUT", detail="تراکنش ثبت‌شده صندوق قابل ویرایش نیست.")
 
     def partial_update(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("PATCH", detail="تراکنش ثبت‌شده صندوق قابل ویرایش نیست.")
 
     def destroy(self, request, *args, **kwargs):
-        raise ValidationError("تغییر یا حذف این سند مالی پس از ثبت مجاز نیست.")
+        raise MethodNotAllowed("DELETE", detail="تراکنش ثبت‌شده صندوق قابل حذف نیست.")
 
     def get_queryset(self):
         return CashBoxTransaction.objects.filter(
@@ -1304,6 +1336,20 @@ class CashBoxTransactionViewSet(
             ]
         )
 
+        # receive/payment transactions are created only by the business
+        # workflows (sale, customer payment, supplier payment, expense,
+        # refund). Allowing them through the generic endpoint would permit
+        # a user to manufacture a financial entry and change the cashbox.
+        if transaction_type in {"receive", "payment"}:
+            raise ValidationError(
+                "تراکنش‌های دریافت و پرداخت صندوق فقط از طریق عملیات مالی مربوطه ثبت می‌شوند."
+            )
+
+        if serializer.validated_data.get("reference_id") is not None:
+            raise ValidationError(
+                "واریز و برداشت دستی صندوق نباید مرجع مالی جعلی داشته باشد."
+            )
+
         amount = serializer.validated_data[
             "amount"
         ]
@@ -1321,7 +1367,7 @@ class CashBoxTransactionViewSet(
                 )
 
         # ثبت تراکنش
-        transaction_obj = serializer.save()
+        transaction_obj = serializer.save(reference_type="manual")
 
         # بروزرسانی موجودی
         if transaction_type in (
@@ -1954,6 +2000,7 @@ class CashTransferViewSet(
             transaction_type="withdraw",
             amount=amount,
             reference_id=transfer.id,
+            reference_type="cash_transfer",
             description=(
                 f"Transfer To "
                 f"{to_cashbox.name}"
@@ -1967,6 +2014,7 @@ class CashTransferViewSet(
             transaction_type="deposit",
             amount=amount,
             reference_id=transfer.id,
+            reference_type="cash_transfer",
             description=(
                 f"Transfer From "
                 f"{from_cashbox.name}"

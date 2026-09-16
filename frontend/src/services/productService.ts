@@ -8,7 +8,6 @@ export interface Product {
   category: number;
   category_name?: string;
   unit?: string;
-  purchase_price?: string;
   sale_price?: string;
   is_active?: boolean;
   inventory_quantity?: string | number | null;
@@ -21,8 +20,6 @@ export interface ProductWriteData {
   name: string;
   category: number;
   unit: string;
-  purchase_price: string;
-  sale_price: string;
   is_active: boolean;
   barcode?: string;
 }

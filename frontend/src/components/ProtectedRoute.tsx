@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import CircularProgress from "@mui/material/CircularProgress";
 import Box from "@mui/material/Box";
-import { refreshAccessToken, logout } from "../services/authService";
+import { refreshAccessToken } from "../services/authService";
 import { tokenService } from "../services/tokenService";
 
 interface ProtectedRouteProps {
@@ -16,36 +16,35 @@ function ProtectedRoute({ children }: ProtectedRouteProps) {
   useEffect(() => {
     let mounted = true;
 
-    const handleAuthChange = () => {
-      if (mounted) setAuthenticated(false);
-    };
+	const ensureSession = async () => {
+	  try {
+		const accessToken = tokenService.getAccessToken();
 
-    window.addEventListener("auth-change", handleAuthChange);
+		if (
+		  !accessToken ||
+		  tokenService.isAccessTokenExpired()
+		) {
+		  await refreshAccessToken();
+		  window.dispatchEvent(new Event("auth-change"));
+		}
 
-    const ensureSession = async () => {
-      const accessToken = tokenService.getAccessToken();
-      if (!accessToken) {
-        if (mounted) setChecking(false);
-        return;
-      }
-
-      try {
-        if (tokenService.isAccessTokenExpired()) {
-          await refreshAccessToken();
-        }
-        if (mounted) setAuthenticated(true);
-      } catch {
-        void logout();
-        if (mounted) setAuthenticated(false);
-      } finally {
-        if (mounted) setChecking(false);
-      }
-    };
+		if (mounted) {
+		  setAuthenticated(true);
+		}
+	  } catch {
+		if (mounted) {
+		  setAuthenticated(false);
+		}
+	  } finally {
+		if (mounted) {
+		  setChecking(false);
+		}
+	  }
+	};
 
     void ensureSession();
     return () => {
       mounted = false;
-      window.removeEventListener("auth-change", handleAuthChange);
     };
   }, []);
 

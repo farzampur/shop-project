@@ -40,6 +40,7 @@ interface PurchaseItem {
   product: number | "";
   quantity: string;
   unit_price: string;
+  sale_price: string;
 }
 
 interface PurchaseFormProps {
@@ -79,6 +80,7 @@ function PurchaseForm({
         product: "",
         quantity: "1",
         unit_price: "0",
+        sale_price: "0",
       },
     ]);
 
@@ -157,6 +159,7 @@ function PurchaseForm({
 			product: item.product,
 			quantity: item.quantity,
 			unit_price: item.unit_price,
+			sale_price: item.sale_price || "0",
 		  }))
 		);
 	  }, [editingPurchase]);
@@ -171,6 +174,7 @@ function PurchaseForm({
         product: "",
         quantity: "1",
         unit_price: "0",
+        sale_price: "0",
       },
     ]);
   };
@@ -200,20 +204,15 @@ function PurchaseForm({
     productId: number
   ) => {
 
-    const selectedProduct =
-      products.find(
-        (product) =>
-          product.id === productId
-      );
-
     const newItems = [...items];
 
+    const selectedProduct = products.find((item) => item.id === productId);
     newItems[index] = {
       ...newItems[index],
       product: productId,
-      unit_price:
-        selectedProduct?.purchase_price ||
-        "0",
+      // قیمت خرید و فروش هر دو در همین بچ خرید تعیین می‌شوند.
+      unit_price: "0",
+      sale_price: selectedProduct?.effective_sale_price || selectedProduct?.sale_price || "0",
     };
 
     setItems(newItems);
@@ -250,6 +249,17 @@ function PurchaseForm({
       unit_price: value,
     };
 
+    setItems(newItems);
+  };
+
+
+  // تغییر قیمت فروش بچ
+  const handleSalePriceChange = (
+    index: number,
+    value: string
+  ) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], sale_price: value };
     setItems(newItems);
   };
 
@@ -316,9 +326,12 @@ const handleSubmit = async (
     }
 
     if (Number(item.unit_price) < 0) {
-      setError(
-        "قیمت نمی‌تواند منفی باشد."
-      );
+      setError("قیمت خرید نمی‌تواند منفی باشد.");
+      return;
+    }
+
+    if (Number(item.sale_price) <= 0) {
+      setError("قیمت فروش بچ باید بیشتر از صفر باشد.");
       return;
     }
   }
@@ -335,6 +348,7 @@ const handleSubmit = async (
         product: Number(item.product),
         quantity: item.quantity,
         unit_price: item.unit_price,
+        sale_price: item.sale_price,
       })),
     };
 
@@ -504,7 +518,11 @@ const handleSubmit = async (
                 </TableCell>
 
                 <TableCell>
-                  قیمت واحد
+                  قیمت خرید
+                </TableCell>
+
+                <TableCell>
+                  قیمت فروش بچ
                 </TableCell>
 
                 <TableCell>
@@ -644,6 +662,18 @@ const handleSubmit = async (
                           }}
                         />
 
+                      </TableCell>
+
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={item.sale_price}
+                          onChange={(event) =>
+                            handleSalePriceChange(index, event.target.value)
+                          }
+                          sx={{ width: 140 }}
+                        />
                       </TableCell>
 
 

@@ -3,9 +3,9 @@ from django.db.models import Sum, Q
 from django.db.models.functions import Coalesce
 from rest_framework.exceptions import ValidationError
 
-from .models import Cart, Order, OrderItem, OrderCancellation, CustomerTransaction, Payment, CashBox, CashBoxTransaction
+from .models import Cart, Order, OrderItem, OrderItemBatch, OrderCancellation, CustomerTransaction, Payment, CashBox, CashBoxTransaction
 
-from products.models import Inventory
+from products.models import Inventory, ProductBatch
 from products.models import InventoryTransaction
 
 from io import BytesIO
@@ -120,59 +120,114 @@ class CheckoutService:
         CartValidationService.validate(cart)
 
         items = list(cart.items.select_related("product", "product__category"))
-        totals = [Decimal("0"), Decimal("0"), Decimal("0")]
-        for item in items:
-            before = item.quantity * item.unit_price
-            discount = before * item.discount_percent / Decimal("100")
-            totals[0] += before
-            totals[1] += discount
-            totals[2] += before - discount
 
-        order = Order.objects.create(
-            user=cart.user, store=cart.store, customer=cart.customer,
-            status="pending",
-            total_before_discount=totals[0],
-            total_discount=totals[1],
-            total_price=totals[2],
+        required_by_product = {}
+        for item in items:
+            required_by_product[item.product_id] = (
+                required_by_product.get(item.product_id, Decimal("0")) + item.quantity
+            )
+
+        locked_inventory_rows = Inventory.objects.select_for_update().filter(
+            store=cart.store,
+            product_id__in=required_by_product.keys(),
         )
+        inventories = {
+            inventory.product_id: inventory
+            for inventory in locked_inventory_rows
+        }
 
-        # Lock inventory rows in a deterministic product-id order. This is
-        # important when two checkouts contain the same products in different
-        # cart order: deterministic locking reduces deadlock risk.
-        inventories = {}
-        items_by_product_id = {item.product_id: item for item in items}
-        for product_id in sorted(items_by_product_id):
-            item = items_by_product_id[product_id]
-            inventory = (Inventory.objects.select_for_update()
-                         .select_related("product")
-                         .filter(product_id=product_id, store=cart.store).first())
-            if not inventory or inventory.quantity < item.quantity:
+        for product_id, required_quantity in required_by_product.items():
+            inventory = inventories.get(product_id)
+            if inventory is None:
+                raise ValidationError("موجودی یکی از کالاهای سبد در این فروشگاه پیدا نشد.")
+            if inventory.quantity < required_quantity:
                 raise ValidationError(
-                    f"موجودی کالای «{item.product.name}» کافی نیست."
+                    f"موجودی کالا کافی نیست. موجودی فعلی: {inventory.quantity}"
                 )
-            inventories[product_id] = inventory
 
+        totals = [Decimal("0"), Decimal("0"), Decimal("0")]
+        order = Order.objects.create(
+            user=cart.user,
+            store=cart.store,
+            customer=cart.customer,
+            status="pending",
+        )
+        order_items = []
         for item in items:
+            if item.price_type == "retail":
+                active_batch = (ProductBatch.objects.select_for_update()
+                                .filter(product=item.product, store=cart.store, remaining_quantity__gt=0)
+                                .order_by("received_at", "id").first())
+                # Legacy inventory created before the batch feature remains sellable.
+                # Once a product has batches, sales must use the active FIFO batch.
+                if active_batch is None:
+                    has_any_batch = ProductBatch.objects.filter(
+                        product=item.product, store=cart.store
+                    ).exists()
+                    if has_any_batch:
+                        raise ValidationError(f"برای کالای «{item.product.name}» بچ قابل فروش فعالی وجود ندارد.")
+                elif item.quantity > active_batch.remaining_quantity:
+                    raise ValidationError(
+                        f"مقدار فروش کالای «{item.product.name}» از باقی‌مانده بچ فعلی بیشتر است: {active_batch.remaining_quantity}"
+                    )
+
             before = item.quantity * item.unit_price
             discount_amount = item.unit_price * item.discount_percent / Decimal("100")
             final_unit_price = item.unit_price - discount_amount
-            OrderItem.objects.create(
+
+            totals[0] += before
+            totals[1] += item.quantity * discount_amount
+            totals[2] += item.quantity * final_unit_price
+
+            batches = list(ProductBatch.objects.select_for_update().filter(
+                product=item.product, store=cart.store, remaining_quantity__gt=0
+            ).order_by("received_at", "id"))
+            remaining = item.quantity
+            allocations = []
+            weighted_cost = Decimal("0")
+            for batch in batches:
+                if remaining <= 0:
+                    break
+                take = min(remaining, batch.remaining_quantity)
+                allocations.append((batch, take))
+                weighted_cost += take * batch.purchase_price
+                remaining -= take
+            if remaining > 0:
+                # Backward compatibility for inventory/products created before batches.
+                weighted_cost = item.quantity * item.product.purchase_price
+
+            order_item = OrderItem.objects.create(
                 order=order, product=item.product, product_name=item.product.name,
                 quantity=item.quantity, unit_price=item.unit_price,
                 price_type=item.price_type,
-                purchase_price=item.product.purchase_price,
+                purchase_price=(weighted_cost / item.quantity if item.quantity else Decimal("0")),
                 discount_percent=item.discount_percent,
                 discount_amount=discount_amount,
                 total_price_before_discount=before,
                 total_discount_amount=item.quantity * discount_amount,
                 total_price=item.quantity * final_unit_price,
             )
+            order_items.append((item, order_item, allocations))
+
+        order.total_before_discount = totals[0]
+        order.total_discount = totals[1]
+        order.total_price = totals[2]
+        order.save(update_fields=[
+            "total_before_discount",
+            "total_discount",
+            "total_price",
+            "updated_at",
+        ])
 
         # Inventory is reserved/consumed at checkout and is reversed on cancellation.
-        for item in items:
+        for item, order_item, allocations in order_items:
             inventory = inventories[item.product_id]
             inventory.quantity -= item.quantity
             inventory.save(update_fields=["quantity", "updated_at"])
+            for batch, allocated in allocations:
+                batch.remaining_quantity -= allocated
+                batch.save(update_fields=["remaining_quantity", "updated_at"])
+                OrderItemBatch.objects.create(order_item=order_item, batch=batch, quantity=allocated)
             InventoryTransaction.objects.create(
                 product=item.product, store=cart.store, transaction_type="sale",
                 quantity=item.quantity, reference_id=order.id,
@@ -228,7 +283,7 @@ class CheckoutService:
                 cashbox.save(update_fields=["balance", "updated_at"])
                 CashBoxTransaction.objects.create(
                     cashbox=cashbox, transaction_type="receive", amount=amount,
-                    reference_id=order.id, description=f"Order #{order.id} / {method}",
+                    reference_id=order.id, reference_type="order", description=f"Order #{order.id} / {method}",
                 )
             else:
                 CustomerTransaction.objects.create(
@@ -283,6 +338,10 @@ class OrderService:
                 )
                 inventory.quantity += item.quantity
                 inventory.save(update_fields=["quantity", "updated_at"])
+                for allocation in item.batch_allocations.select_related("batch"):
+                    batch = ProductBatch.objects.select_for_update().get(pk=allocation.batch_id)
+                    batch.remaining_quantity += allocation.quantity
+                    batch.save(update_fields=["remaining_quantity", "updated_at"])
                 InventoryTransaction.objects.create(
                     product=item.product, store=order.store, transaction_type="return",
                     quantity=item.quantity, reference_id=order.id,
@@ -300,7 +359,7 @@ class OrderService:
                     cashbox.save(update_fields=["balance", "updated_at"])
                     CashBoxTransaction.objects.create(
                         cashbox=cashbox, transaction_type="payment", amount=payment.amount,
-                        reference_id=order.id, description=f"Refund Order #{order.id}",
+                        reference_id=order.id, reference_type="order", description=f"Refund Order #{order.id}",
                     )
 
             # Reverse customer account entries only when the sale was on account.

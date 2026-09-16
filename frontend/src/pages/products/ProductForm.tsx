@@ -24,8 +24,6 @@ interface Product {
   barcode?: string;
   category: number;
   unit?: string;
-  purchase_price?: string;
-  sale_price?: string;
   is_active?: boolean;
 }
 
@@ -51,12 +49,6 @@ function ProductForm({
     product?.category ?? ""
   );
   const [unit, setUnit] = useState(product?.unit || "عدد");
-  const [purchasePrice, setPurchasePrice] = useState(
-    product?.purchase_price || "0"
-  );
-  const [salePrice, setSalePrice] = useState(
-    product?.sale_price || "0"
-  );
   const [isActive, setIsActive] = useState(
     product?.is_active ?? true
   );
@@ -123,16 +115,12 @@ function ProductForm({
         name: string;
         category: number;
         unit: string;
-        purchase_price: string;
-        sale_price: string;
         is_active: boolean;
         barcode?: string;
       } = {
         name: name.trim(),
         category,
         unit: unit.trim() || "عدد",
-        purchase_price: purchasePrice || "0",
-        sale_price: salePrice || "0",
         is_active: isActive,
       };
 
@@ -248,26 +236,6 @@ function ProductForm({
         value={unit}
         onChange={(event) =>
           setUnit(event.target.value)
-        }
-        fullWidth
-      />
-
-      <TextField
-        label="قیمت خرید"
-        type="number"
-        value={purchasePrice}
-        onChange={(event) =>
-          setPurchasePrice(event.target.value)
-        }
-        fullWidth
-      />
-
-      <TextField
-        label="قیمت فروش"
-        type="number"
-        value={salePrice}
-        onChange={(event) =>
-          setSalePrice(event.target.value)
         }
         fullWidth
       />

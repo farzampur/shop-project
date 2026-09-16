@@ -47,7 +47,10 @@ CORS_ALLOWED_ORIGINS = _env_list(
     "http://localhost:5173,http://127.0.0.1:5173",
 )
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    "http://127.0.0.1:5173",
+)
 
 # HTTPS hardening is secure-by-default in production and HTTP-friendly in development.
 def _env_bool(name, default):
@@ -58,7 +61,10 @@ SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", not DEBUG)
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000" if not DEBUG else "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv("SECURE_HSTS_INCLUDE_SUBDOMAINS", "1" if not DEBUG else "0").strip().lower() in {"1", "true", "yes", "on"}
-SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "1" if not DEBUG else "0").strip().lower() in {"1", "true", "yes", "on"}
+SECURE_HSTS_PRELOAD = _env_bool(
+    "SECURE_HSTS_PRELOAD",
+    False,
+)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if _env_bool("SECURE_PROXY_SSL_HEADER", not DEBUG) else None
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

@@ -15,7 +15,7 @@ const api = axios.create({
   withCredentials: true,
 });
 
-let refreshPromise: Promise<string> | null = null;
+
 
 function isAuthEndpoint(url = "") {
   return (
@@ -24,15 +24,6 @@ function isAuthEndpoint(url = "") {
   );
 }
 
-async function refreshOnce(): Promise<string> {
-  if (!refreshPromise) {
-    refreshPromise = refreshAccessToken().finally(() => {
-      refreshPromise = null;
-    });
-  }
-
-  return refreshPromise;
-}
 
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
@@ -75,7 +66,7 @@ api.interceptors.response.use(
     originalRequest._retry = true;
 
     try {
-      const newAccessToken = await refreshOnce();
+      const newAccessToken = await refreshAccessToken();
 
       originalRequest.headers.set(
         "Authorization",

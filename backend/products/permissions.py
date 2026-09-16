@@ -82,7 +82,7 @@ class InventoryPermission(BasePermission):
         if request.method == "GET":
             return bool(roles)
 
-        if request.method in ["POST", "PUT", "PATCH"]:
+        if request.method in ["POST", "PUT", "PATCH", "DELETE"]:
             return bool(
                 roles.intersection(
                     {"manager", "warehouse"}

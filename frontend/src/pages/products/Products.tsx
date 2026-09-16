@@ -178,11 +178,7 @@ function Products() {
                 </TableCell>
 
                 <TableCell align="right">
-                  قیمت خرید
-                </TableCell>
-
-                <TableCell align="right">
-                  قیمت فروش
+                  قیمت فروش پیش‌فرض
                 </TableCell>
 
                 <TableCell align="right">
@@ -214,11 +210,7 @@ function Products() {
                   </TableCell>
 
                   <TableCell align="right">
-                    {product.purchase_price || "-"}
-                  </TableCell>
-
-                  <TableCell align="right">
-                    {product.sale_price || "-"}
+                    {Number(product.effective_sale_price || product.sale_price || 0).toLocaleString("fa-IR")}
                   </TableCell>
 
                   <TableCell align="right">

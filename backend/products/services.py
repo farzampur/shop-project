@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils import timezone
 from io import BytesIO
 import random
 from io import BytesIO
@@ -34,6 +35,7 @@ from .models import (
     Inventory,
     InventoryTransaction,
     Product,
+    ProductBatch,
 )
 
 from reportlab.pdfbase import pdfmetrics
@@ -119,6 +121,18 @@ class PurchaseService:
             # اگر قبلاً ثبت شده، نباید موجودی
             # دوباره افزایش پیدا کند.
             if inventory_transaction:
+                ProductBatch.objects.get_or_create(
+                    purchase_item=item,
+                    defaults={
+                        "product": item.product,
+                        "store": purchase.store,
+                        "quantity": item.quantity,
+                        "remaining_quantity": item.quantity,
+                        "purchase_price": item.unit_price,
+                        "sale_price": item.sale_price,
+                        "received_at": purchase.created_at,
+                    },
+                )
                 continue
 
             # ---------------------------------
@@ -176,6 +190,20 @@ class PurchaseService:
                 description=(
                     f"Purchase #{purchase.id}"
                 ),
+            )
+
+            # هر قلم دریافت‌شده دقیقاً یک بچ مستقل دارد.
+            ProductBatch.objects.get_or_create(
+                purchase_item=item,
+                defaults={
+                    "product": item.product,
+                    "store": purchase.store,
+                    "quantity": item.quantity,
+                    "remaining_quantity": item.quantity,
+                    "purchase_price": item.unit_price,
+                    "sale_price": item.sale_price,
+                    "received_at": timezone.now(),
+                },
             )
 
         # -------------------------------------

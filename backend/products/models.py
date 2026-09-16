@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import F
 from core.models import Store
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -329,6 +330,13 @@ class PurchaseItem(models.Model):
         decimal_places=2
     )
 
+    sale_price = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name="قیمت فروش این بچ"
+    )
+
     total_price = models.DecimalField(
         max_digits=15,
         decimal_places=2,
@@ -382,6 +390,64 @@ class PurchaseItem(models.Model):
         return (
             f"{self.product.name}"
         )
+
+
+class ProductBatch(models.Model):
+    """موجودی یک بچ خرید‌شده با قیمت خرید و فروش مستقل."""
+    purchase_item = models.OneToOneField(
+        PurchaseItem,
+        on_delete=models.PROTECT,
+        related_name="batch",
+        null=True,
+        blank=True,
+        verbose_name="قلم خرید",
+    )
+    source_batch = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="transferred_batches",
+        verbose_name="بچ مبدأ انتقال",
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name="batches",
+        verbose_name="کالا",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.PROTECT,
+        related_name="product_batches",
+        verbose_name="فروشگاه",
+    )
+    quantity = models.DecimalField(
+        max_digits=15, decimal_places=3, verbose_name="مقدار بچ"
+    )
+    remaining_quantity = models.DecimalField(
+        max_digits=15, decimal_places=3, verbose_name="باقی‌مانده بچ"
+    )
+    purchase_price = models.DecimalField(
+        max_digits=15, decimal_places=2, verbose_name="قیمت خرید"
+    )
+    sale_price = models.DecimalField(
+        max_digits=15, decimal_places=2, verbose_name="قیمت فروش"
+    )
+    received_at = models.DateTimeField(default=timezone.now, verbose_name="تاریخ دریافت")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["received_at", "id"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="product_batch_quantity_gt_zero"),
+            models.CheckConstraint(condition=models.Q(remaining_quantity__gte=0), name="product_batch_remaining_gte_zero"),
+            models.CheckConstraint(condition=models.Q(remaining_quantity__lte=F("quantity")), name="product_batch_remaining_lte_quantity"),
+        ]
+
+    def __str__(self):
+        return f"بچ {self.id} - {self.product.name}"
 
 
 class SupplierTransaction(models.Model):
@@ -560,6 +626,37 @@ class StockTransferItem(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(fields=["transfer", "product"], name="unique_transfer_product")
+        ]
+
+
+class StockTransferBatchAllocation(models.Model):
+    """ثبت دقیق مصرف بچ‌های مبدأ برای یک انتقال.
+
+    این رکورد در زمان ارسال ساخته می‌شود و در زمان دریافت از روی آن
+    بچ متناظر در فروشگاه مقصد ساخته می‌شود.
+    """
+    transfer_item = models.ForeignKey(
+        StockTransferItem,
+        on_delete=models.CASCADE,
+        related_name="batch_allocations",
+    )
+    source_batch = models.ForeignKey(
+        ProductBatch,
+        on_delete=models.PROTECT,
+        related_name="transfer_allocations",
+    )
+    quantity = models.DecimalField(max_digits=15, decimal_places=3)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["transfer_item", "source_batch"],
+                name="unique_transfer_item_source_batch",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name="transfer_batch_allocation_quantity_gt_zero",
+            ),
         ]
 
 
