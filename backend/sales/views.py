@@ -4,7 +4,7 @@ from django.db import transaction
 from datetime import datetime
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError, PermissionDenied, MethodNotAllowed
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, BasePermission
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -923,6 +923,53 @@ class CustomerReportView(APIView):
             result
         )
 
+class CustomerTransactionPermission(BasePermission):
+    """
+    Permission for customer financial transactions.
+
+    For POST, the target store is determined from the customer, not from
+    an optional cashbox field. This lets the view return a validation error
+    for a cross-store cashbox while still enforcing the role matrix.
+    """
+
+    allowed_roles_by_method = {
+        "GET": {"manager", "cashier"},
+        "POST": {"manager", "cashier"},
+        "PUT": {"manager", "cashier"},
+        "PATCH": {"manager", "cashier"},
+        "DELETE": {"manager", "cashier"},
+    }
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser:
+            return True
+
+        allowed_roles = self.allowed_roles_by_method.get(request.method, set())
+        if not allowed_roles:
+            return False
+
+        if request.method == "POST":
+            customer_id = request.data.get("customer")
+            if not customer_id:
+                return False
+            customer = Customer.objects.filter(pk=customer_id).only("store_id").first()
+            if not customer:
+                return False
+            return request.user.user_stores.filter(
+                store_id=customer.store_id,
+                role__in=allowed_roles,
+                is_active=True,
+            ).exists()
+
+        return request.user.user_stores.filter(
+            role__in=allowed_roles,
+            is_active=True,
+        ).exists()
+
+
 class CustomerTransactionViewSet(viewsets.ModelViewSet):
     """
     مدیریت تراکنش‌های مشتری
@@ -948,7 +995,7 @@ class CustomerTransactionViewSet(viewsets.ModelViewSet):
 
     permission_classes = [
         IsAuthenticated,
-        StoreRolePermission
+        CustomerTransactionPermission,
     ]
 
     def update(self, request, *args, **kwargs):
@@ -977,6 +1024,14 @@ class CustomerTransactionViewSet(viewsets.ModelViewSet):
         if tx_type == "sale" and not has_store_access(self.request.user, customer.store_id, {"manager"}):
             raise PermissionDenied("ثبت دستی بدهی فروش فقط برای مدیر فروشگاه مجاز است.")
         if tx_type == "payment":
+            # Customer payments are created only by the official payment
+            # workflow. A client must never manufacture a ledger link by
+            # supplying an arbitrary reference_id.
+            if serializer.validated_data.get("reference_id") is not None:
+                raise ValidationError(
+                    {"reference_id": "مرجع تراکنش پرداخت باید توسط سیستم ثبت شود."}
+                )
+
             customer = Customer.objects.select_for_update().get(pk=customer.pk)
             sales_total = CustomerTransaction.objects.filter(
                 customer=customer, transaction_type="sale"
