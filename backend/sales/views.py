@@ -866,15 +866,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
         if store_id:
             queryset = queryset.filter(store_id=store_id)
         return queryset
-
-    def perform_destroy(self, instance):
-        # CustomerTransaction uses CASCADE, so an unrestricted DELETE would
-        # erase financial history. Orders are historical documents as well.
-        if instance.transactions.exists() or instance.orders.exists():
-            raise ValidationError(
-                "این مشتری دارای سابقه فروش یا مالی است و قابل حذف نیست؛ در صورت نیاز اطلاعات مشتری را ویرایش کنید."
-            )
-        instance.delete()
         
 class CustomerReportView(APIView):
     permission_classes = [

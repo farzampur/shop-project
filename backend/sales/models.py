@@ -153,11 +153,7 @@ class CartItem(models.Model):
             models.UniqueConstraint(
                 fields=["cart", "product", "price_type"],
                 name="unique_cart_product_price_type"
-            ),
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="cart_item_quantity_gt_zero"),
-            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="cart_item_unit_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(discount_percent__gte=0), name="cart_item_discount_percent_gte_zero"),
-            models.CheckConstraint(condition=models.Q(discount_percent__lte=100), name="cart_item_discount_percent_lte_100"),
+            )
         ]
 
     @property
@@ -257,12 +253,7 @@ class Order(models.Model):
 
     class Meta:
         verbose_name = "سفارش"
-        verbose_name_plural = "سفارش‌ها"
-        constraints = [
-            models.CheckConstraint(condition=models.Q(total_before_discount__gte=0), name="order_total_before_discount_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_discount__gte=0), name="order_total_discount_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_price__gte=0), name="order_total_price_gte_zero"),
-        ]        
+        verbose_name_plural = "سفارش‌ها"        
         
         
         
@@ -371,17 +362,6 @@ class OrderItem(models.Model):
         return f"{self.product_name} - سفارش {self.order_id}"
 
     class Meta:
-        constraints = [
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="order_item_quantity_gt_zero"),
-            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="order_item_unit_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(purchase_price__gte=0), name="order_item_purchase_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(discount_percent__gte=0), name="order_item_discount_percent_gte_zero"),
-            models.CheckConstraint(condition=models.Q(discount_percent__lte=100), name="order_item_discount_percent_lte_100"),
-            models.CheckConstraint(condition=models.Q(discount_amount__gte=0), name="order_item_discount_amount_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_price_before_discount__gte=0), name="order_item_total_before_discount_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_discount_amount__gte=0), name="order_item_total_discount_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_price__gte=0), name="order_item_total_price_gte_zero"),
-        ]
         verbose_name = "آیتم سفارش"
         verbose_name_plural = "آیتم‌های سفارش"
 
@@ -398,8 +378,7 @@ class OrderItemBatch(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["order_item", "batch"], name="unique_order_item_batch"),
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="order_item_batch_quantity_gt_zero"),
+            models.UniqueConstraint(fields=["order_item", "batch"], name="unique_order_item_batch")
         ]
 
 
@@ -424,9 +403,6 @@ class Payment(models.Model):
 
     class Meta:
         ordering = ["id"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="payment_amount_gt_zero"),
-        ]
 
 
 class Expense(models.Model):
@@ -493,9 +469,6 @@ class Expense(models.Model):
         verbose_name = "هزینه"
 
         verbose_name_plural = "هزینه‌ها"
-        constraints = [
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="expense_amount_gt_zero"),
-        ]
     def __str__(self):
         return self.title        
         
@@ -554,9 +527,6 @@ class CustomerTransaction(models.Model):
         verbose_name = "تراکنش مشتری"
 
         verbose_name_plural = "تراکنش‌های مشتری"
-        constraints = [
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="customer_transaction_amount_gt_zero"),
-        ]
         
         
         
@@ -601,8 +571,7 @@ class CashBox(models.Model):
             models.UniqueConstraint(
                 fields=["store", "name"],
                 name="unique_cashbox_name_per_store"
-            ),
-            models.CheckConstraint(condition=models.Q(balance__gte=0), name="cashbox_balance_gte_zero"),
+            )
         ]        
 
     def __str__(self):
@@ -677,9 +646,6 @@ class CashBoxTransaction(models.Model):
         )
 
         ordering = ["-created_at"]
-        constraints = [
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="cashbox_transaction_amount_gt_zero"),
-        ]
 
     def __str__(self):
 
@@ -740,10 +706,6 @@ class CashTransfer(
         verbose_name_plural = (
             "انتقال صندوق‌ها"
         )
-        constraints = [
-            models.CheckConstraint(condition=models.Q(amount__gt=0), name="cash_transfer_amount_gt_zero"),
-            models.CheckConstraint(condition=~models.Q(from_cashbox=models.F("to_cashbox")), name="cash_transfer_cashboxes_different"),
-        ]
 
     def __str__(
         self
@@ -768,28 +730,7 @@ class CashDayClose(models.Model):
     closed_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         ordering = ["-close_date", "-id"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["cashbox", "close_date"],
-                name="unique_cashbox_day_close",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(opening_balance__gte=0),
-                name="cashdayclose_opening_balance_gte_zero",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(expected_balance__gte=0),
-                name="cashdayclose_expected_balance_gte_zero",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(counted_balance__gte=0),
-                name="cashdayclose_counted_balance_gte_zero",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(difference=models.F("counted_balance") - models.F("expected_balance")),
-                name="cashdayclose_difference_matches_balances",
-            ),
-        ]
+        constraints = [models.UniqueConstraint(fields=["cashbox", "close_date"], name="unique_cashbox_day_close")]
         verbose_name = "بستن روزانه صندوق"
         verbose_name_plural = "بستن روزانه صندوق‌ها"
     def __str__(self): return f"{self.cashbox} - {self.close_date}"

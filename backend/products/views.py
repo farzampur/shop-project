@@ -137,17 +137,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
-        # Category deletion cascades to Product. A category is therefore not
-        # a safe destructive operation once even one product exists.
-        if instance.products.exists():
-            raise ValidationError(
-                "این دسته‌بندی دارای محصول است و قابل حذف نیست؛ ابتدا محصولات را غیرفعال کنید."
-            )
         try:
             instance.delete()
+
         except ProtectedError:
+            from rest_framework.exceptions import ValidationError
+
             raise ValidationError(
-                "این دسته‌بندی دارای سابقه وابسته است و قابل حذف نیست."
+                "این دسته‌بندی دارای محصول است و قابل حذف نیست."
             )
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -350,12 +347,6 @@ class InventoryViewSet(viewsets.ModelViewSet):
         delta = new_quantity - old_quantity
         inventory.quantity = new_quantity
         inventory.save(update_fields=["quantity", "updated_at"])
-
-        # A no-op adjustment changes no stock and must not create a zero-value
-        # ledger entry. InventoryTransaction enforces non-zero quantities at DB level.
-        if delta == 0:
-            return Response(InventorySerializer(inventory).data)
-
         InventoryTransaction.objects.create(
             product=inventory.product, store=inventory.store,
             transaction_type="adjustment", quantity=delta,
@@ -569,29 +560,21 @@ class SupplierViewSet(
             instance.store
             .store_users
             .filter(
-                user=self.request.user,
-                is_active=True,
+                user=self.request.user
             )
             .exists()
         )
 
         if not has_access:
-            from rest_framework.exceptions import PermissionDenied
+            from rest_framework.exceptions import (
+                PermissionDenied
+            )
+
             raise PermissionDenied(
                 "شما به این فروشگاه دسترسی ندارید."
             )
 
-        if instance.purchases.exists() or instance.transactions.exists():
-            raise ValidationError(
-                "این تأمین‌کننده دارای سابقه خرید یا مالی است و قابل حذف نیست."
-            )
-
-        try:
-            instance.delete()
-        except ProtectedError:
-            raise ValidationError(
-                "این تأمین‌کننده دارای سابقه وابسته است و قابل حذف نیست."
-            )
+        instance.delete()
 
 
 class PurchaseViewSet(
@@ -795,7 +778,12 @@ class PurchaseViewSet(
                 }
             )
 
+        # Only the transaction owned by this purchase may be removed.
+        # A bare reference_id is not globally unique across business domains
+        # or stores, so deleting by reference_id alone could destroy an
+        # unrelated supplier-ledger entry.
         SupplierTransaction.objects.filter(
+            supplier=instance.supplier,
             transaction_type="purchase",
             reference_id=instance.id,
         ).delete()
@@ -4339,7 +4327,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("برای ارسال انتقال مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_APPROVED:
             raise ValidationError("فقط انتقال تأیید شده قابل ارسال است.")
-        for item in transfer.items.select_related("product").order_by("product_id", "id"):
+        for item in transfer.items.select_related("product"):
             inv = Inventory.objects.select_for_update().get(product=item.product, store=transfer.source_store)
             if inv.quantity < item.quantity:
                 raise ValidationError(f"موجودی «{item.product.name}» کافی نیست.")
@@ -4398,7 +4386,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("برای دریافت انتقال در فروشگاه مقصد مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_SHIPPED:
             raise ValidationError("فقط انتقال ارسال شده قابل دریافت است.")
-        for item in transfer.items.select_related("product").order_by("product_id", "id"):
+        for item in transfer.items.select_related("product"):
             inv, _ = Inventory.objects.select_for_update().get_or_create(product=item.product, store=transfer.destination_store, defaults={"quantity": Decimal("0")})
             inv.quantity += item.quantity
             inv.save(update_fields=["quantity", "updated_at"])

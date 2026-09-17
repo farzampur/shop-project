@@ -18,11 +18,6 @@ from .services import (
 
 class CategorySerializer(serializers.ModelSerializer):
 
-    def validate_store(self, value):
-        if self.instance and value.id != self.instance.store_id:
-            raise serializers.ValidationError("انتقال دسته‌بندی بین فروشگاه‌ها مجاز نیست.")
-        return value
-
     store_name = serializers.CharField(
         source="store.name",
         read_only=True
@@ -164,12 +159,6 @@ class ProductSerializer(serializers.ModelSerializer):
 
         return super().to_internal_value(data)
         
-    def validate(self, attrs):
-        category = attrs.get("category", getattr(self.instance, "category", None))
-        if self.instance and category and category.store_id != self.instance.category.store_id:
-            raise serializers.ValidationError({"category": "انتقال کالا بین فروشگاه‌ها از طریق تغییر دسته‌بندی مجاز نیست."})
-        return attrs
-
     def validate_barcode(self, value):
         """
         اعتبارسنجی بارکد در صورت ارسال توسط کاربر.
@@ -319,11 +308,6 @@ class SupplierSerializer(
     serializers.ModelSerializer
 ):
 
-    def validate_store(self, value):
-        if self.instance and value.id != self.instance.store_id:
-            raise serializers.ValidationError("انتقال تأمین‌کننده بین فروشگاه‌ها مجاز نیست.")
-        return value
-
     store_name = serializers.CharField(
         source="store.name",
         read_only=True
@@ -401,13 +385,6 @@ class PurchaseItemSerializer(
             # Their returnable quantity is still purchase quantity minus returns.
             pass
         return f"{remaining:.3f}"
-
-    def validate(self, attrs):
-        product = attrs.get("product", getattr(self.instance, "product", None))
-        purchase = getattr(self.instance, "purchase", None)
-        if purchase is not None and product is not None and product.category.store_id != purchase.store_id:
-            raise serializers.ValidationError({"product": "محصول انتخاب‌شده متعلق به فروشگاه این خرید نیست."})
-        return attrs
 
     class Meta:
 
@@ -502,11 +479,6 @@ class PurchaseSerializer(
         obj
     ):
         return obj.items.count()
-
-    def validate_store(self, value):
-        if self.instance and value.id != self.instance.store_id:
-            raise serializers.ValidationError("انتقال خرید بین فروشگاه‌ها مجاز نیست.")
-        return value
 
     def validate(
         self,
@@ -823,6 +795,10 @@ class PurchaseReturnSerializer(
                 raise serializers.ValidationError({
                     "product": "این کالا در خرید انتخاب‌شده وجود ندارد."
                 })
+            if product.category.store_id != purchase.store_id:
+                raise serializers.ValidationError({
+                    "product": "کالا متعلق به فروشگاه این خرید نیست."
+                })
             if purchase.supplier.store_id != purchase.store_id:
                 raise serializers.ValidationError({
                     "purchase": "خرید و تأمین‌کننده متعلق به یک فروشگاه نیستند."
@@ -919,11 +895,6 @@ class ProductPriceSerializer(serializers.ModelSerializer):
     def get_is_current(self, obj):
         now = timezone.now()
         return bool(obj.is_active and obj.effective_from <= now and (obj.effective_to is None or obj.effective_to >= now))
-
-    def validate_store(self, value):
-        if self.instance and value.id != self.instance.store_id:
-            raise serializers.ValidationError("انتقال سابقه قیمت بین فروشگاه‌ها مجاز نیست.")
-        return value
 
     def validate(self, attrs):
         amount = attrs.get("amount", getattr(self.instance, "amount", None))

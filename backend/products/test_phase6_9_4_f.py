@@ -1,19 +1,38 @@
+from decimal import Decimal
+
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.test import TestCase
+
+from accounts.models import UserStore
 from core.models import Store
-from .models import StockTransfer
+from products.models import (Category, Product, ProductBatch, Purchase, PurchaseItem, StockTransfer, StockTransferBatchAllocation, StockTransferItem, Supplier)
 
 
-class Phase694TransferTests(TestCase):
+class BatchInvariantTests(TestCase):
     def setUp(self):
-        self.store = Store.objects.create(name="694 Store", code="694-SRC")
-        self.other_store = Store.objects.create(name="694 Other Store", code="694-DST")
-        self.user = User.objects.create_user(username="694", password="x")
+        self.user = User.objects.create_user(username="phase694f", password="pw")
+        self.store = Store.objects.create(name="Store 6.9.4 F", code="P694F")
+        UserStore.objects.create(user=self.user, store=self.store, role="manager", is_active=True)
+        category = Category.objects.create(name="Cat 6.9.4 F", store=self.store)
+        self.product = Product.objects.create(name="Product 6.9.4 F", barcode="6940002", category=category, purchase_price=Decimal("50"), sale_price=Decimal("100"))
+        supplier = Supplier.objects.create(name="Supplier 6.9.4 F", store=self.store)
+        purchase = Purchase.objects.create(supplier=supplier, store=self.store, user=self.user, received=True)
+        self.item = PurchaseItem.objects.create(purchase=purchase, product=self.product, quantity=Decimal("10"), unit_price=Decimal("50"), sale_price=Decimal("80"))
+        self.batch = ProductBatch.objects.create(purchase_item=self.item, product=self.product, store=self.store, quantity=Decimal("10"), remaining_quantity=Decimal("10"), purchase_price=Decimal("50"), sale_price=Decimal("80"))
+        transfer = StockTransfer.objects.create(source_store=self.store, destination_store=self.store, created_by=self.user)
+        self.transfer_item = StockTransferItem.objects.create(transfer=transfer, product=self.product, quantity=Decimal("2"))
 
-    def test_transfer_fixture_uses_distinct_destination_store(self):
-        transfer = StockTransfer.objects.create(
-            source_store=self.store,
-            destination_store=self.other_store,
-            created_by=self.user,
-        )
-        self.assertNotEqual(transfer.source_store_id, transfer.destination_store_id)
+    def test_product_batch_remaining_cannot_exceed_quantity(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ProductBatch.objects.create(purchase_item=None, product=self.product, store=self.store, quantity=Decimal("5"), remaining_quantity=Decimal("6"), purchase_price=Decimal("50"), sale_price=Decimal("80"))
+
+    def test_transfer_batch_allocation_must_be_positive(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                StockTransferBatchAllocation.objects.create(transfer_item=self.transfer_item, source_batch=self.batch, quantity=Decimal("0"))
+
+    def test_valid_batch_allocation_remains_allowed(self):
+        allocation = StockTransferBatchAllocation.objects.create(transfer_item=self.transfer_item, source_batch=self.batch, quantity=Decimal("2"))
+        self.assertEqual(allocation.quantity, Decimal("2"))

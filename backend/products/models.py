@@ -1,6 +1,5 @@
 from django.db import models
 from django.db.models import F
-from django.db.models import F
 from core.models import Store
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -159,15 +158,7 @@ class Inventory(models.Model):
             models.UniqueConstraint(
                 fields=["product", "store"],
                 name="unique_product_store_inventory"
-            ),
-            models.CheckConstraint(
-                condition=models.Q(quantity__gte=0),
-                name="inventory_quantity_gte_zero",
-            ),
-            models.CheckConstraint(
-                condition=models.Q(min_quantity__gte=0),
-                name="inventory_min_quantity_gte_zero",
-            ),
+            )
         ]
 
     def __str__(self):
@@ -225,14 +216,6 @@ class InventoryTransaction(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(
-                condition=~models.Q(quantity=0),
-                name="inventory_transaction_quantity_nonzero",
-            ),
-        ]
 
 
 class Supplier(models.Model):
@@ -320,11 +303,6 @@ class Purchase(models.Model):
         default=False
     )    
 
-    class Meta:
-        constraints = [
-            models.CheckConstraint(condition=models.Q(total_amount__gte=0), name="purchase_total_amount_gte_zero"),
-        ]
-
     def __str__(self):
         return f"Purchase #{self.id}"
 
@@ -364,14 +342,6 @@ class PurchaseItem(models.Model):
         decimal_places=2,
         default=0
     )
-
-    class Meta:
-        constraints = [
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="purchase_item_quantity_gt_zero"),
-            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="purchase_item_unit_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(sale_price__gte=0), name="purchase_item_sale_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_price__gte=0), name="purchase_item_total_price_gte_zero"),
-        ]
 
     def save(self, *args, **kwargs):
 
@@ -474,8 +444,6 @@ class ProductBatch(models.Model):
             models.CheckConstraint(condition=models.Q(quantity__gt=0), name="product_batch_quantity_gt_zero"),
             models.CheckConstraint(condition=models.Q(remaining_quantity__gte=0), name="product_batch_remaining_gte_zero"),
             models.CheckConstraint(condition=models.Q(remaining_quantity__lte=F("quantity")), name="product_batch_remaining_lte_quantity"),
-            models.CheckConstraint(condition=models.Q(purchase_price__gte=0), name="product_batch_purchase_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(sale_price__gte=0), name="product_batch_sale_price_gte_zero"),
         ]
 
     def __str__(self):
@@ -532,13 +500,6 @@ class SupplierTransaction(models.Model):
         ordering = [
             "-created_at",
             "-id"
-        ]
-
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(amount__gt=0),
-                name="supplier_transaction_amount_gt_zero",
-            ),
         ]
 
         verbose_name = (
@@ -622,13 +583,6 @@ class PurchaseReturn(models.Model):
             **kwargs
         )
 
-    class Meta:
-        constraints = [
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="purchase_return_quantity_gt_zero"),
-            models.CheckConstraint(condition=models.Q(unit_price__gte=0), name="purchase_return_unit_price_gte_zero"),
-            models.CheckConstraint(condition=models.Q(total_amount__gte=0), name="purchase_return_total_amount_gte_zero"),
-        ]
-
     def __str__(self):
         return (
             f"برگشت خرید #{self.purchase_id} - "
@@ -662,12 +616,6 @@ class StockTransfer(models.Model):
 
     class Meta:
         ordering = ["-created_at", "-id"]
-        constraints = [
-            models.CheckConstraint(
-                condition=~models.Q(source_store=F("destination_store")),
-                name="stock_transfer_source_destination_different",
-            ),
-        ]
 
 
 class StockTransferItem(models.Model):
@@ -677,8 +625,7 @@ class StockTransferItem(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["transfer", "product"], name="unique_transfer_product"),
-            models.CheckConstraint(condition=models.Q(quantity__gt=0), name="stock_transfer_item_quantity_gt_zero"),
+            models.UniqueConstraint(fields=["transfer", "product"], name="unique_transfer_product")
         ]
 
 
@@ -735,9 +682,3 @@ class ProductPrice(models.Model):
 
     class Meta:
         ordering = ["-effective_from", "-id"]
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(effective_to__isnull=True) | models.Q(effective_to__gt=F("effective_from")),
-                name="product_price_effective_end_after_start",
-            ),
-        ]

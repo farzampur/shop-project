@@ -45,41 +45,9 @@ class StoreViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             return Response({"detail": "فقط مدیر سیستم می‌تواند شعبه را حذف کند."}, status=status.HTTP_403_FORBIDDEN)
-
         obj = self.get_object()
-
-        # A store is a business boundary. Deleting it must never cascade into
-        # inventory, sales, purchases, customers, cashboxes, or audit history.
-        # Even if a UserStore row was removed previously, historical business
-        # rows still make the store non-deletable. Deactivation is the safe
-        # lifecycle operation for an existing store.
-        history_relations = (
-            "categories",
-            "suppliers",
-            "purchases",
-            "inventories",
-            "product_batches",
-            "product_prices",
-            "customers",
-            "orders",
-            "carts",
-            "expenses",
-            "cashboxes",
-            "customer_transactions",
-            "cash_day_closes",
-            "outgoing_transfers",
-            "incoming_transfers",
-            "audit_logs",
-        )
-
-        if UserStore.objects.filter(store=obj).exists() or any(
-            getattr(obj, relation).exists() for relation in history_relations
-        ):
-            return Response(
-                {"detail": "این شعبه دارای سابقه یا داده عملیاتی است و قابل حذف نیست؛ آن را غیرفعال کنید."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        if UserStore.objects.filter(store=obj).exists():
+            return Response({"detail": "شعبه‌ای که کاربر یا سابقه دسترسی دارد قابل حذف نیست؛ آن را غیرفعال کنید."}, status=status.HTTP_400_BAD_REQUEST)
         store_id, name = obj.id, obj.name
         obj.delete()
         audit(user=request.user, action="delete", model_name="Store", object_id=store_id, description=f"حذف فروشگاه {name}", store=None, metadata={"store_id": store_id})
