@@ -61,9 +61,9 @@ export default function Users() {
 
   if (!activeStore) return <Alert severity="warning">ابتدا یک فروشگاه انتخاب کنید.</Alert>;
   return <Box dir="rtl">
-    <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 2, justifyContent: "space-between", gap: 1 }}>
+    <Stack direction={{ xs: "column", sm: "row" }} className="page-header" sx={{ mb: 0, justifyContent: "space-between", gap: 1 }}>
       <Box><Typography variant="h5" sx={{ fontWeight: 700 }}>کاربران و کارکنان</Typography><Typography variant="body2" color="text.secondary">مدیریت کاربران و سطح دسترسی شعبه «{activeStore.name}»</Typography></Box>
-      <Stack direction="row" spacing={1}><Button startIcon={<RefreshIcon />} variant="outlined" onClick={() => void load()}>به‌روزرسانی</Button><Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>کاربر جدید</Button></Stack>
+      <Stack className="page-header-actions" direction="row" spacing={1}><Button startIcon={<RefreshIcon />} variant="outlined" onClick={() => void load()}>به‌روزرسانی</Button><Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>کاربر جدید</Button></Stack>
     </Stack>
     {error && <Alert sx={{ mb: 2 }} severity="error" onClose={() => setError("")}>{error}</Alert>}
     <Card><CardContent>{loading ? <Box sx={{ minHeight: 240, display: "grid", placeItems: "center" }}><CircularProgress /></Box> : <TableContainer><Table><TableHead><TableRow><TableCell>کاربر</TableCell><TableCell>ایمیل</TableCell><TableCell>نقش</TableCell><TableCell>وضعیت</TableCell><TableCell align="center">عملیات</TableCell></TableRow></TableHead><TableBody>

@@ -14,6 +14,7 @@ import Purchases from "./pages/purchases/Purchases";
 import Suppliers from "./pages/suppliers/Suppliers";
 import Sales from "./pages/sales/Sales";
 import Reports from "./pages/Reports";
+import AdvancedReports from "./pages/AdvancedReports";
 import Customers from "./pages/customers/Customers";
 import Cashbox from "./pages/cashbox/Cashbox";
 import CashDayClose from "./pages/cashbox/CashDayClose";
@@ -126,6 +127,15 @@ function App() {
           <Route path="/transfers" element={<RoleRoute allowedRoles={ROUTE_ROLES.transfers}><StockTransfers /></RoleRoute>} />
           <Route path="/pricing" element={<RoleRoute allowedRoles={ROUTE_ROLES.pricing}><Pricing /></RoleRoute>} />
 
+
+          <Route
+            path="/advanced-reports"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.advancedReports}>
+                <AdvancedReports />
+              </RoleRoute>
+            }
+          />
 
           <Route
             path="/reports"

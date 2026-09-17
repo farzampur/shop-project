@@ -267,6 +267,24 @@ class InventorySerializer(serializers.ModelSerializer):
         ]
         
         
+class ProductBatchSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    barcode = serializers.CharField(source="product.barcode", read_only=True)
+    store_name = serializers.CharField(source="store.name", read_only=True)
+    received_at = JalaliDateTimeField(with_time=True, read_only=True)
+    remaining_quantity = serializers.DecimalField(max_digits=15, decimal_places=3, read_only=True)
+    quantity = serializers.DecimalField(max_digits=15, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = ProductBatch
+        fields = [
+            "id", "product", "product_name", "barcode", "store", "store_name",
+            "quantity", "remaining_quantity", "purchase_price", "sale_price",
+            "received_at", "source_batch",
+        ]
+        read_only_fields = fields
+
+
 class InventoryTransactionSerializer(
     serializers.ModelSerializer
 ):

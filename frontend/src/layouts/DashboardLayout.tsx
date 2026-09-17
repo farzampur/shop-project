@@ -31,10 +31,14 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import PriceChangeIcon from "@mui/icons-material/PriceChange";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import MenuOpenIcon from "@mui/icons-material/MenuOpen";
+import MenuIcon from "@mui/icons-material/Menu";
 import { useStore } from "../contexts/StoreContext";
 import { canAccessRoute, type AppRouteKey } from "../services/routePermissions";
 
 const drawerWidth = 220;
+const collapsedDrawerWidth = 68;
 
 type MenuItem = {
   key: AppRouteKey;
@@ -54,6 +58,7 @@ const menuItems: readonly MenuItem[] = [
   { key: "customers", title: "مشتریان", path: "/customers", icon: <PeopleIcon /> },
   { key: "cashbox", title: "صندوق", path: "/cashbox", icon: <AccountBalanceIcon /> },
   { key: "reports", title: "گزارش‌ها", path: "/reports", icon: <AssessmentIcon /> },
+  { key: "advancedReports", title: "گزارش‌های تکمیلی", path: "/advanced-reports", icon: <AssessmentIcon /> },
   { key: "cashClose", title: "بستن صندوق", path: "/cash-close", icon: <LockClockIcon /> },
   { key: "audit", title: "گزارش فعالیت", path: "/audit", icon: <FactCheckIcon /> },
   { key: "users", title: "کاربران و کارکنان", path: "/users", icon: <AdminPanelSettingsIcon /> },
@@ -72,6 +77,7 @@ const roleLabels = {
 function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(() => localStorage.getItem("dashboard_drawer_open") !== "false");
   const {
     user,
     activeRole,
@@ -92,15 +98,26 @@ function DashboardLayout() {
     if (selectedStore) setActiveStore(selectedStore);
   };
 
+  const toggleDrawer = () => {
+    setDrawerOpen((current) => {
+      const next = !current;
+      localStorage.setItem("dashboard_drawer_open", String(next));
+      return next;
+    });
+  };
+
   const visibleMenuItems = menuItems.filter((item) =>
     canAccessRoute(item.key, activeRole),
   );
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", direction: "rtl" }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar sx={{ minHeight: 56 }}>
-          <Typography variant="h6" sx={{ mr: 2 }}>فروشگاه:</Typography>
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, right: drawerOpen ? 8 : 8, left: 8, top: 8, width: "auto", borderRadius: 3 }}>
+        <Toolbar sx={{ minHeight: 54, gap: 1 }}>
+          <ListItemButton onClick={toggleDrawer} sx={{ minWidth: 44, width: 44, height: 40, p: 0, justifyContent: "center", borderRadius: 2 }} aria-label={drawerOpen ? "بستن منو" : "باز کردن منو"}>
+            {drawerOpen ? <MenuOpenIcon /> : <MenuIcon />}
+          </ListItemButton>
+          {drawerOpen && <Typography variant="h6" sx={{ mr: 1 }}>فروشگاه:</Typography>}
           <FormControl size="small" sx={{ minWidth: 220, backgroundColor: "white", borderRadius: 1 }}>
             <Select
               value={activeStore?.id ?? ""}
@@ -115,7 +132,7 @@ function DashboardLayout() {
           </FormControl>
 
           <Box sx={{ flexGrow: 1 }} />
-          <Box sx={{ textAlign: "right" }}>
+          {drawerOpen && <Box sx={{ textAlign: "right" }}>
             <Typography variant="body2">
               {user?.first_name || user?.last_name
                 ? `${user.first_name} ${user.last_name}`.trim()
@@ -124,7 +141,7 @@ function DashboardLayout() {
             <Typography variant="caption">
               {activeRole ? roleLabels[activeRole] : "بدون نقش"}
             </Typography>
-          </Box>
+          </Box>}
         </Toolbar>
       </AppBar>
 
@@ -132,13 +149,17 @@ function DashboardLayout() {
         variant="permanent"
         anchor="right"
         sx={{
-          width: drawerWidth,
+          width: drawerOpen ? drawerWidth : collapsedDrawerWidth,
           flexShrink: 0,
           "& .MuiDrawer-paper": {
-            width: drawerWidth,
+            width: drawerOpen ? drawerWidth : collapsedDrawerWidth,
             boxSizing: "border-box",
-            top: 56,
-            height: "calc(100vh - 56px)",
+            top: 70,
+            right: drawerOpen ? 8 : 8,
+            height: "calc(100vh - 78px)",
+            borderRadius: 3,
+            overflow: "hidden",
+            boxShadow: "0 12px 35px rgba(31,48,77,.12)",
             display: "flex",
             flexDirection: "column",
           },
@@ -154,8 +175,8 @@ function DashboardLayout() {
                 onClick={() => navigate(item.path)}
                 sx={{ minHeight: 38, py: 0.25 }}
               >
-                <ListItemIcon sx={{ minWidth: 34, "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />
+                <ListItemIcon sx={{ minWidth: drawerOpen ? 34 : "auto", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
+                {drawerOpen && <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />}
               </ListItemButton>
             );
           })}
@@ -166,13 +187,13 @@ function DashboardLayout() {
             onClick={handleLogout}
             sx={{ minHeight: 40, py: 0.25, color: "error.main", fontWeight: 700 }}
           >
-            <ListItemIcon sx={{ minWidth: 34, color: "inherit", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
-            <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />
+            <ListItemIcon sx={{ minWidth: drawerOpen ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
+            {drawerOpen && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />}
           </ListItemButton>
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 2, mt: 7 }}>
+      <Box component="main" sx={{ flexGrow: 1, p: 1, mt: 8, mr: 0, transition: "margin .2s ease" }}>
         <Outlet />
       </Box>
     </Box>

@@ -85,9 +85,9 @@ export default function Customers() {
 
   if (!activeStore) return <Alert severity="warning">ابتدا یک فروشگاه انتخاب کنید.</Alert>;
   return <Box dir="rtl">
-    <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 2, justifyContent: "space-between", gap: 1 }}>
+    <Stack direction={{ xs: "column", sm: "row" }} className="page-header" sx={{ mb: 0, justifyContent: "space-between", gap: 1 }}>
       <Box><Typography variant="h5" sx={{ fontWeight: 700 }}>مدیریت مشتریان</Typography><Typography variant="body2" color="text.secondary">دفتر مشتری، مانده حساب و دریافت مطالبات</Typography></Box>
-      <Stack direction="row" spacing={1}><Button startIcon={<RefreshIcon />} variant="outlined" onClick={() => void load()}>به‌روزرسانی</Button><Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>مشتری جدید</Button></Stack>
+      <Stack className="page-header-actions" direction="row" spacing={1}><Button startIcon={<RefreshIcon />} variant="outlined" onClick={() => void load()}>به‌روزرسانی</Button><Button startIcon={<AddIcon />} variant="contained" onClick={openCreate}>مشتری جدید</Button></Stack>
     </Stack>
     {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>{error}</Alert>}
     <Card><CardContent>

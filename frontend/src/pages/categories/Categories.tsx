@@ -204,28 +204,17 @@ function Categories() {
 
   return (
     <>
-      <Box
-        sx={{
-          display: "flex",
-          direction: "rtl",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 3,
-        }}
-      >
-        <Button
-          variant="contained"
-          onClick={() =>
-            setShowForm(true)
-          }
-        >
-          + افزودن دسته‌بندی
-        </Button>
-
-        <Typography variant="h4">
-          دسته‌بندی‌های{" "}
-          {activeStore.name}
-        </Typography>
+      <Box className="page-header">
+        <Box className="page-header-title">
+          <Typography variant="h5" className="soft-title">
+            دسته‌بندی‌های {activeStore.name}
+          </Typography>
+        </Box>
+        <Box className="page-header-actions">
+          <Button variant="contained" onClick={() => setShowForm(true)}>
+            + افزودن دسته‌بندی
+          </Button>
+        </Box>
       </Box>
 
 

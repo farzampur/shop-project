@@ -29,6 +29,7 @@ export type AppRouteKey =
   | "customers"
   | "cashbox"
   | "reports"
+  | "advancedReports"
   | "cashClose"
   | "audit"
   | "users"
@@ -47,6 +48,7 @@ export const ROUTE_ROLES: Record<AppRouteKey, readonly StoreRole[]> = {
   customers: [ROLE.manager, ROLE.seller, ROLE.cashier],
   cashbox: [ROLE.manager, ROLE.cashier],
   reports: [ROLE.manager],
+  advancedReports: [ROLE.manager],
   cashClose: [ROLE.manager, ROLE.cashier],
   audit: [ROLE.manager],
   users: [ROLE.manager],

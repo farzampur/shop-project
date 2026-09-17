@@ -60,6 +60,7 @@ from .serializers import (
     StockTransferSerializer,
     StockTransferItemSerializer,
     ProductPriceSerializer,
+    ProductBatchSerializer,
 )
 from accounts.store_access import has_store_access, user_store_ids
 from accounts.permissions import StoreRolePermission
@@ -354,6 +355,31 @@ class InventoryViewSet(viewsets.ModelViewSet):
         )
         return Response(InventorySerializer(inventory).data)
         audit(user=request.user, action="adjust", model_name="Inventory", object_id=inventory.id, store=inventory.store, description=f"تعدیل موجودی {inventory.product.name}", metadata={"old": str(old_quantity), "new": str(new_quantity), "delta": str(delta)})
+
+
+class ProductBatchViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ProductBatchSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = (
+            ProductBatch.objects
+            .filter(store_id__in=user_store_ids(self.request.user))
+            .select_related("product", "store")
+            .order_by("received_at", "id")
+        )
+        store_id = self.request.query_params.get("store")
+        product_id = self.request.query_params.get("product")
+        remaining = self.request.query_params.get("remaining")
+        if store_id:
+            queryset = queryset.filter(store_id=store_id)
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        if remaining == "active":
+            queryset = queryset.filter(remaining_quantity__gt=0)
+        elif remaining == "empty":
+            queryset = queryset.filter(remaining_quantity=0)
+        return queryset
 
 
 class InventoryTransactionViewSet(

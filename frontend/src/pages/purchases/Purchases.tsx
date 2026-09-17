@@ -285,25 +285,17 @@ function Purchases() {
 
   return (
     <>
-      <Box
-        sx={{
-          display: "flex",
-          flexDirection: "row-reverse",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 3,
-        }}
-      >
-        <Typography variant="h5">
-          خریدهای {activeStore.name}
-        </Typography>
-
-        <Button
-          variant="contained"
-          onClick={handleNewPurchase}
-        >
-          ثبت خرید جدید
-        </Button>
+      <Box className="page-header">
+        <Box className="page-header-title">
+          <Typography variant="h5" className="soft-title">
+            خریدهای {activeStore.name}
+          </Typography>
+        </Box>
+        <Box className="page-header-actions">
+          <Button variant="contained" onClick={handleNewPurchase}>
+            ثبت خرید جدید
+          </Button>
+        </Box>
       </Box>
 
       {error && (

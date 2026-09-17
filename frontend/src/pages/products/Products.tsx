@@ -4,6 +4,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 
 import {
   Alert,
+  Box,
   Button,
   CircularProgress,
   IconButton,
@@ -112,26 +113,15 @@ function Products() {
   }
 
   return (
-    <>
-      <Typography
-        variant="h4"
-        sx={{
-          textAlign: "right",
-          mb: 3,
-        }}
-      >
-        محصولات
-      </Typography>
-
-      <Button
-        variant="contained"
-        onClick={() => setShowForm(true)}
-        sx={{
-          mb: 3,
-        }}
-      >
-        + افزودن محصول
-      </Button>
+    <Box dir="rtl" className="page-shell">
+      <Box className="page-header">
+        <Box className="page-header-title">
+          <Typography variant="h5" className="soft-title">محصولات</Typography>
+        </Box>
+        <Box className="page-header-actions">
+          <Button variant="contained" onClick={() => setShowForm(true)}>+ افزودن محصول</Button>
+        </Box>
+      </Box>
 
       {error && (
         <Alert
@@ -242,7 +232,7 @@ function Products() {
           </Table>
         </TableContainer>
       )}
-    </>
+    </Box>
   );
 }
 

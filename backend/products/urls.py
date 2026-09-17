@@ -39,6 +39,7 @@ from .views import (
     ProductBarcodeSearchView,
     StockTransferViewSet,
     ProductPriceViewSet,
+    ProductBatchViewSet,
 )
 
 
@@ -72,6 +73,12 @@ router.register(
     r"inventory",
     InventoryViewSet,
     basename="inventory"
+)
+
+router.register(
+    "batches",
+    ProductBatchViewSet,
+    basename="product-batch"
 )
 
 router.register(
