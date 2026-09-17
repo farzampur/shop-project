@@ -137,14 +137,17 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
+        # Category deletion cascades to Product. A category is therefore not
+        # a safe destructive operation once even one product exists.
+        if instance.products.exists():
+            raise ValidationError(
+                "این دسته‌بندی دارای محصول است و قابل حذف نیست؛ ابتدا محصولات را غیرفعال کنید."
+            )
         try:
             instance.delete()
-
         except ProtectedError:
-            from rest_framework.exceptions import ValidationError
-
             raise ValidationError(
-                "این دسته‌بندی دارای محصول است و قابل حذف نیست."
+                "این دسته‌بندی دارای سابقه وابسته است و قابل حذف نیست."
             )
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -566,21 +569,29 @@ class SupplierViewSet(
             instance.store
             .store_users
             .filter(
-                user=self.request.user
+                user=self.request.user,
+                is_active=True,
             )
             .exists()
         )
 
         if not has_access:
-            from rest_framework.exceptions import (
-                PermissionDenied
-            )
-
+            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 "شما به این فروشگاه دسترسی ندارید."
             )
 
-        instance.delete()
+        if instance.purchases.exists() or instance.transactions.exists():
+            raise ValidationError(
+                "این تأمین‌کننده دارای سابقه خرید یا مالی است و قابل حذف نیست."
+            )
+
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                "این تأمین‌کننده دارای سابقه وابسته است و قابل حذف نیست."
+            )
 
 
 class PurchaseViewSet(
