@@ -121,19 +121,25 @@ class PurchaseService:
             # اگر قبلاً ثبت شده، نباید موجودی
             # دوباره افزایش پیدا کند.
             if inventory_transaction:
-                ProductBatch.objects.get_or_create(
-                    purchase_item=item,
-                    defaults={
-                        "product": item.product,
-                        "store": purchase.store,
-                        "quantity": item.quantity,
-                        "remaining_quantity": item.quantity,
-                        "purchase_price": item.unit_price,
-                        "sale_price": item.sale_price,
-                        "received_at": purchase.created_at,
-                    },
+                # A purchase is locked and received atomically. Seeing an
+                # existing purchase inventory transaction while `received`
+                # is still false means the persisted state is inconsistent.
+                # Never silently skip stock creation here: that would leave
+                # Purchase / Batch / Inventory / Supplier Ledger out of sync.
+                batch = (
+                    ProductBatch.objects
+                    .filter(purchase_item=item)
+                    .first()
                 )
-                continue
+                if batch is None:
+                    raise ValueError(
+                        "وضعیت دریافت خرید ناسازگار است: "
+                        "تراکنش خرید وجود دارد اما بچ متناظر ثبت نشده است."
+                    )
+                raise ValueError(
+                    "وضعیت دریافت خرید ناسازگار است: "
+                    "تراکنش خرید این قلم قبلاً ثبت شده است."
+                )
 
             # ---------------------------------
             # پیدا کردن موجودی

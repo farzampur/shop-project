@@ -119,7 +119,7 @@ class CheckoutService:
         cart = Cart.objects.select_for_update().get(pk=cart.pk)
         CartValidationService.validate(cart)
 
-        items = list(cart.items.select_related("product", "product__category"))
+        items = list(cart.items.select_related("product", "product__category").order_by("id"))
 
         required_by_product = {}
         for item in items:
@@ -145,6 +145,23 @@ class CheckoutService:
                     f"موجودی کالا کافی نیست. موجودی فعلی: {inventory.quantity}"
                 )
 
+        # Lock all sellable batches once and keep one in-memory FIFO cursor per product.
+        # This is important when the same product appears in multiple cart lines
+        # (for example retail + wholesale): later lines must see earlier lines'
+        # allocations instead of restarting FIFO from the first batch.
+        batch_rows = list(
+            ProductBatch.objects.select_for_update()
+            .filter(
+                store=cart.store,
+                product_id__in=required_by_product.keys(),
+                remaining_quantity__gt=0,
+            )
+            .order_by("product_id", "received_at", "id")
+        )
+        batches_by_product = {}
+        for batch in batch_rows:
+            batches_by_product.setdefault(batch.product_id, []).append(batch)
+
         totals = [Decimal("0"), Decimal("0"), Decimal("0")]
         order = Order.objects.create(
             user=cart.user,
@@ -154,55 +171,79 @@ class CheckoutService:
         )
         order_items = []
         for item in items:
-            if item.price_type == "retail":
-                active_batch = (ProductBatch.objects.select_for_update()
-                                .filter(product=item.product, store=cart.store, remaining_quantity__gt=0)
-                                .order_by("received_at", "id").first())
-                # Legacy inventory created before the batch feature remains sellable.
-                # Once a product has batches, sales must use the active FIFO batch.
-                if active_batch is None:
-                    has_any_batch = ProductBatch.objects.filter(
-                        product=item.product, store=cart.store
-                    ).exists()
-                    if has_any_batch:
-                        raise ValidationError(f"برای کالای «{item.product.name}» بچ قابل فروش فعالی وجود ندارد.")
-                elif item.quantity > active_batch.remaining_quantity:
-                    raise ValidationError(
-                        f"مقدار فروش کالای «{item.product.name}» از باقی‌مانده بچ فعلی بیشتر است: {active_batch.remaining_quantity}"
+            product_batches = batches_by_product.get(item.product_id, [])
+            has_any_batch = ProductBatch.objects.filter(
+                product=item.product, store=cart.store
+            ).exists()
+
+            # Allocate against the shared, locked in-memory batch state.
+            remaining = item.quantity
+            allocations = []
+            weighted_cost = Decimal("0")
+            for batch in product_batches:
+                if remaining <= 0:
+                    break
+                if batch.remaining_quantity <= 0:
+                    continue
+                take = min(remaining, batch.remaining_quantity)
+                allocations.append((batch, take))
+                weighted_cost += take * batch.purchase_price
+                batch.remaining_quantity -= take
+                remaining -= take
+
+            if remaining > 0 and has_any_batch:
+                raise ValidationError(
+                    f"موجودی بچ‌های کالای «{item.product.name}» برای فروش کافی نیست."
+                )
+
+            # No batch means legacy inventory: retain the historical product
+            # purchase-price fallback instead of breaking old stock.
+            if remaining > 0:
+                allocations = []
+                weighted_cost = item.quantity * item.product.purchase_price
+
+            # A retail line may span batches. Create one immutable order line per
+            # allocation so sale price and purchase cost remain tied to the batch.
+            if item.price_type == "retail" and allocations:
+                for batch, allocated in allocations:
+                    unit_price = batch.sale_price
+                    discount_amount = unit_price * item.discount_percent / Decimal("100")
+                    final_unit_price = unit_price - discount_amount
+                    before = allocated * unit_price
+                    discount_total = allocated * discount_amount
+                    final_total = allocated * final_unit_price
+                    totals[0] += before
+                    totals[1] += discount_total
+                    totals[2] += final_total
+                    order_item = OrderItem.objects.create(
+                        order=order, product=item.product, product_name=item.product.name,
+                        quantity=allocated, unit_price=unit_price, price_type=item.price_type,
+                        purchase_price=batch.purchase_price,
+                        discount_percent=item.discount_percent,
+                        discount_amount=discount_amount,
+                        total_price_before_discount=before,
+                        total_discount_amount=discount_total,
+                        total_price=final_total,
                     )
+                    order_items.append((item, order_item, [(batch, allocated)]))
+                continue
 
             before = item.quantity * item.unit_price
             discount_amount = item.unit_price * item.discount_percent / Decimal("100")
             final_unit_price = item.unit_price - discount_amount
-
             totals[0] += before
             totals[1] += item.quantity * discount_amount
             totals[2] += item.quantity * final_unit_price
-
-            batches = list(ProductBatch.objects.select_for_update().filter(
-                product=item.product, store=cart.store, remaining_quantity__gt=0
-            ).order_by("received_at", "id"))
-            remaining = item.quantity
-            allocations = []
-            weighted_cost = Decimal("0")
-            for batch in batches:
-                if remaining <= 0:
-                    break
-                take = min(remaining, batch.remaining_quantity)
-                allocations.append((batch, take))
-                weighted_cost += take * batch.purchase_price
-                remaining -= take
-            if remaining > 0:
-                # Backward compatibility for inventory/products created before batches.
-                weighted_cost = item.quantity * item.product.purchase_price
-
+            snapshot_cost = (
+                weighted_cost / item.quantity
+                if item.quantity and allocations
+                else item.product.purchase_price
+            )
             order_item = OrderItem.objects.create(
                 order=order, product=item.product, product_name=item.product.name,
                 quantity=item.quantity, unit_price=item.unit_price,
-                price_type=item.price_type,
-                purchase_price=(weighted_cost / item.quantity if item.quantity else Decimal("0")),
-                discount_percent=item.discount_percent,
-                discount_amount=discount_amount,
+                price_type=item.price_type, purchase_price=snapshot_cost,
+                discount_percent=item.discount_percent, discount_amount=discount_amount,
                 total_price_before_discount=before,
                 total_discount_amount=item.quantity * discount_amount,
                 total_price=item.quantity * final_unit_price,
@@ -213,21 +254,23 @@ class CheckoutService:
         order.total_discount = totals[1]
         order.total_price = totals[2]
         order.save(update_fields=[
-            "total_before_discount",
-            "total_discount",
-            "total_price",
-            "updated_at",
+            "total_before_discount", "total_discount", "total_price", "updated_at",
         ])
 
-        # Inventory is reserved/consumed at checkout and is reversed on cancellation.
+        # Inventory is consumed once per cart line; batch quantities have already
+        # been decremented in memory during shared FIFO allocation.
+        persisted_batch_ids = set()
         for item, order_item, allocations in order_items:
             inventory = inventories[item.product_id]
             inventory.quantity -= item.quantity
             inventory.save(update_fields=["quantity", "updated_at"])
             for batch, allocated in allocations:
-                batch.remaining_quantity -= allocated
-                batch.save(update_fields=["remaining_quantity", "updated_at"])
-                OrderItemBatch.objects.create(order_item=order_item, batch=batch, quantity=allocated)
+                if batch.pk not in persisted_batch_ids:
+                    batch.save(update_fields=["remaining_quantity", "updated_at"])
+                    persisted_batch_ids.add(batch.pk)
+                OrderItemBatch.objects.create(
+                    order_item=order_item, batch=batch, quantity=allocated
+                )
             InventoryTransaction.objects.create(
                 product=item.product, store=cart.store, transaction_type="sale",
                 quantity=item.quantity, reference_id=order.id,

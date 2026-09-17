@@ -57,6 +57,37 @@ class ProductBatchTests(TestCase):
         batch = get_active_batch(self.product, self.store.id)
         self.assertEqual(batch.remaining_quantity, Decimal("5"))
 
+    def test_fifo_allocation_is_shared_across_retail_and_wholesale_lines(self):
+        self._purchase("9", "100", "130")
+        self._purchase("7", "120", "155")
+
+        cart = Cart.objects.create(user=self.user, store=self.store)
+        CartItem.objects.create(
+            cart=cart, product=self.product, quantity=Decimal("4"),
+            unit_price=Decimal("130"), price_type="retail"
+        )
+        CartItem.objects.create(
+            cart=cart, product=self.product, quantity=Decimal("5"),
+            unit_price=Decimal("110"), price_type="wholesale"
+        )
+
+        order = CheckoutService.checkout(cart, [])
+        allocations = list(
+            order.items.order_by("id").values_list(
+                "price_type", "quantity", "purchase_price"
+            )
+        )
+        self.assertEqual(
+            allocations,
+            [
+                ("retail", Decimal("4"), Decimal("100")),
+                ("wholesale", Decimal("5"), Decimal("100")),
+            ],
+        )
+
+        first = ProductBatch.objects.order_by("received_at", "id").first()
+        self.assertEqual(first.remaining_quantity, Decimal("0"))
+
     def test_sale_consumes_fifo_batch_and_snapshots_cost(self):
         self._purchase("5", "100", "130")
         self._purchase("7", "120", "155")

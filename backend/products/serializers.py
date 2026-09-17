@@ -531,12 +531,36 @@ class PurchaseSerializer(
                 }
             )
 
-        # تمام محصولات متعلق به فروشگاه باشند
+        # تمام محصولات متعلق به فروشگاه باشند و هر محصول فقط یک بار
+        # در یک خرید ثبت شود؛ چند خط برای یک محصول باعث ابهام در Batch و
+        # برگشت خرید می‌شود.
         if store and items:
+            seen_product_ids = set()
 
             for item in items:
-
                 product = item["product"]
+
+                if product.id in seen_product_ids:
+                    raise serializers.ValidationError({
+                        "items": (
+                            f"محصول «{product.name}» نمی‌تواند بیش از یک بار "
+                            "در یک خرید ثبت شود."
+                        )
+                    })
+                seen_product_ids.add(product.id)
+
+                if item["quantity"] <= 0:
+                    raise serializers.ValidationError({
+                        "items": "مقدار هر قلم خرید باید بیشتر از صفر باشد."
+                    })
+                if item["unit_price"] < 0:
+                    raise serializers.ValidationError({
+                        "items": "قیمت خرید نمی‌تواند منفی باشد."
+                    })
+                if item.get("sale_price", Decimal("0")) < 0:
+                    raise serializers.ValidationError({
+                        "items": "قیمت فروش Batch نمی‌تواند منفی باشد."
+                    })
 
                 product_store_id = (
                     product.category.store_id
@@ -757,6 +781,32 @@ class SupplierPaymentSerializer(
 class PurchaseReturnSerializer(
     serializers.ModelSerializer
 ):
+
+    def validate(self, attrs):
+        purchase = attrs.get("purchase", getattr(self.instance, "purchase", None))
+        product = attrs.get("product", getattr(self.instance, "product", None))
+
+        if purchase is not None and product is not None:
+            if not purchase.received:
+                raise serializers.ValidationError({
+                    "purchase": "فقط خرید دریافت‌شده قابل برگشت است."
+                })
+            if not purchase.items.filter(product_id=product.id).exists():
+                raise serializers.ValidationError({
+                    "product": "این کالا در خرید انتخاب‌شده وجود ندارد."
+                })
+            if purchase.supplier.store_id != purchase.store_id:
+                raise serializers.ValidationError({
+                    "purchase": "خرید و تأمین‌کننده متعلق به یک فروشگاه نیستند."
+                })
+
+        return attrs
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("مقدار برگشتی باید بیشتر از صفر باشد.")
+        return value
+
     product_name = serializers.CharField(
         source="product.name",
         read_only=True
