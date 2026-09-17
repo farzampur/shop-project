@@ -99,7 +99,13 @@ class PurchaseService:
                 "این خرید قبلاً دریافت شده است."
             )
 
-        for item in purchase.items.all():
+        for item in purchase.items.select_related("product").order_by("product_id", "id"):
+
+            # The inventory row may not exist yet. Locking the product row
+            # prevents two different purchases for the same product/store from
+            # racing through the create path and colliding on the unique
+            # (product, store) inventory constraint.
+            Product.objects.select_for_update().get(pk=item.product_id)
 
             # ---------------------------------
             # بررسی تراکنش قبلی این قلم خرید

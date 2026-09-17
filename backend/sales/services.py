@@ -130,7 +130,7 @@ class CheckoutService:
         locked_inventory_rows = Inventory.objects.select_for_update().filter(
             store=cart.store,
             product_id__in=required_by_product.keys(),
-        )
+        ).order_by("product_id")
         inventories = {
             inventory.product_id: inventory
             for inventory in locked_inventory_rows
@@ -311,7 +311,7 @@ class CheckoutService:
         cashboxes = {
             cb.id: cb for cb in CashBox.objects.select_for_update().filter(
                 id__in=cashbox_ids, store=order.store
-            )
+            ).order_by("id")
         }
 
         for p in payments:

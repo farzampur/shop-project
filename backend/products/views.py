@@ -4328,7 +4328,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("برای ارسال انتقال مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_APPROVED:
             raise ValidationError("فقط انتقال تأیید شده قابل ارسال است.")
-        for item in transfer.items.select_related("product"):
+        for item in transfer.items.select_related("product").order_by("product_id", "id"):
             inv = Inventory.objects.select_for_update().get(product=item.product, store=transfer.source_store)
             if inv.quantity < item.quantity:
                 raise ValidationError(f"موجودی «{item.product.name}» کافی نیست.")
@@ -4387,7 +4387,7 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("برای دریافت انتقال در فروشگاه مقصد مجوز ندارید.")
         if transfer.status != StockTransfer.STATUS_SHIPPED:
             raise ValidationError("فقط انتقال ارسال شده قابل دریافت است.")
-        for item in transfer.items.select_related("product"):
+        for item in transfer.items.select_related("product").order_by("product_id", "id"):
             inv, _ = Inventory.objects.select_for_update().get_or_create(product=item.product, store=transfer.destination_store, defaults={"quantity": Decimal("0")})
             inv.quantity += item.quantity
             inv.save(update_fields=["quantity", "updated_at"])
