@@ -257,13 +257,25 @@ class CheckoutService:
             "total_before_discount", "total_discount", "total_price", "updated_at",
         ])
 
-        # Inventory is consumed once per cart line; batch quantities have already
-        # been decremented in memory during shared FIFO allocation.
+        # Inventory is consumed once per original cart line. A retail line can
+        # produce multiple OrderItems when it spans FIFO batches, but those split
+        # OrderItems represent one logical cart quantity and must not decrement
+        # the aggregate Inventory more than once.
         persisted_batch_ids = set()
+        persisted_cart_item_ids = set()
         for item, order_item, allocations in order_items:
-            inventory = inventories[item.product_id]
-            inventory.quantity -= item.quantity
-            inventory.save(update_fields=["quantity", "updated_at"])
+            if item.id not in persisted_cart_item_ids:
+                inventory = inventories[item.product_id]
+                inventory.quantity -= item.quantity
+                inventory.save(update_fields=["quantity", "updated_at"])
+                persisted_cart_item_ids.add(item.id)
+
+                InventoryTransaction.objects.create(
+                    product=item.product, store=cart.store, transaction_type="sale",
+                    quantity=item.quantity, reference_id=order.id,
+                    description=f"Order #{order.id}",
+                )
+
             for batch, allocated in allocations:
                 if batch.pk not in persisted_batch_ids:
                     batch.save(update_fields=["remaining_quantity", "updated_at"])
@@ -271,12 +283,6 @@ class CheckoutService:
                 OrderItemBatch.objects.create(
                     order_item=order_item, batch=batch, quantity=allocated
                 )
-            InventoryTransaction.objects.create(
-                product=item.product, store=cart.store, transaction_type="sale",
-                quantity=item.quantity, reference_id=order.id,
-                description=f"Order #{order.id}",
-            )
-
         CheckoutService._settle_order(order, payments or [])
         cart.items.all().delete()
         return order

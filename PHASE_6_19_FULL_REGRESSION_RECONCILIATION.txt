@@ -1,0 +1,21 @@
+Phase 6.19 - Full Regression Reconciliation
+
+این نسخه بر اساس خروجی 263 تست و 18 failure/error تهیه شده است.
+
+اصلاحات production:
+- جلوگیری از حذف Store دارای سابقه عملیاتی/مالی و تبدیل ProtectedError به پاسخ کنترل‌شده.
+- جلوگیری از حذف Supplier دارای سابقه خرید/مالی.
+- جلوگیری از حذف Customer دارای سابقه مالی/فروش.
+- اصلاح StoreRolePermission برای StockTransfer با تشخیص source_store.
+- قفل Product در receive_purchase برای جلوگیری از race هنگام ایجاد اولین Inventory در دریافت هم‌زمان.
+- جلوگیری از انتقال Category/Product/PurchaseItem/ProductPrice بین فروشگاه‌ها در Serializerها.
+
+اصلاحات تست/fixture:
+- Phase 6.9.4 دیگر انتقال مبدأ/مقصد یکسان ایجاد نمی‌کند.
+- Phase 6.10 serializer tests با partial=True اجرا می‌شوند تا validation موردنظر را واقعاً تست کنند.
+- Phase 6.8.2 قیمت فروش Batch را صریحاً 200 قرار می‌دهد تا سناریوی E2E با منطق Batch Pricing منطبق باشد.
+
+تست مرحله‌ای:
+python manage.py test core.test_phase6_12 core.test_phase6_8_2 products.test_phase6_9_4_f products.test_phase6_9_5 products.test_phase6_10 products.test_phase6_11
+
+پس از سبز شدن: python manage.py test
