@@ -119,7 +119,6 @@ class Phase682E2EAndIsolationTests(TestCase):
             product=self.product,
             quantity=Decimal("5"),
             unit_price=Decimal("100"),
-            sale_price=Decimal("200"),
         )
         PurchaseService.receive_purchase(purchase)
         self.inventory_a.refresh_from_db()

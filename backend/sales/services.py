@@ -351,6 +351,8 @@ class OrderService:
         order = Order.objects.select_for_update().get(pk=order.pk)
         if order.status not in {"pending", "confirmed"}:
             raise ValidationError("این سفارش قابل پرداخت نیست.")
+        if not payments:
+            raise ValidationError("برای تسویه سفارش حداقل یک پرداخت لازم است.")
         CheckoutService._settle_order(order, payments)
         return order
 

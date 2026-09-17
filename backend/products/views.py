@@ -4241,6 +4241,66 @@ class StockTransferViewSet(viewsets.ModelViewSet):
             audit(user=request.user, action="create", model_name="StockTransfer", object_id=transfer.id, store=source, description=f"ایجاد انتقال کالا #{transfer.id}")
         return Response(self.get_serializer(transfer).data, status=status.HTTP_201_CREATED)
 
+    @transaction.atomic
+    def perform_update(self, serializer):
+        """Only editable draft transfers may be changed.
+
+        Once a transfer is approved/shipped/received/cancelled its source,
+        destination and notes are part of the audit trail and must remain
+        immutable.  Even while draft, changing source/destination after items
+        exist would invalidate the item inventory checks, so those fields are
+        locked once the transfer has items.
+        """
+        transfer = self._locked_transfer(self.get_object().pk)
+        if transfer.status != StockTransfer.STATUS_DRAFT:
+            raise ValidationError(
+                "این انتقال پس از خروج از وضعیت پیش‌نویس قابل ویرایش نیست."
+            )
+
+        if not has_store_access(self.request.user, transfer.source_store_id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای ویرایش انتقال در فروشگاه مبدأ مجوز ندارید.")
+
+        source = serializer.validated_data.get("source_store", transfer.source_store)
+        destination = serializer.validated_data.get("destination_store", transfer.destination_store)
+        if source.id == destination.id:
+            raise ValidationError("مبدأ و مقصد انتقال نمی‌توانند یکسان باشند.")
+        if not destination.is_active:
+            raise ValidationError("فروشگاه مقصد غیرفعال است.")
+        if not has_store_access(self.request.user, source.id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای فروشگاه مبدأ انتخاب‌شده مجوز ندارید.")
+        if not has_store_access(self.request.user, destination.id, {"manager", "warehouse"}):
+            raise PermissionDenied("برای فروشگاه مقصد انتخاب‌شده دسترسی انبار/مدیریت ندارید.")
+
+        if transfer.items.exists() and (
+            source.id != transfer.source_store_id
+            or destination.id != transfer.destination_store_id
+        ):
+            raise ValidationError(
+                "پس از افزودن کالا، مبدأ و مقصد انتقال قابل تغییر نیستند."
+            )
+
+        serializer.save()
+        audit(
+            user=self.request.user,
+            action="update",
+            model_name="StockTransfer",
+            object_id=transfer.id,
+            store=transfer.source_store,
+            description=f"ویرایش پیش‌نویس انتقال کالا #{transfer.id}",
+        )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        """A transfer can only be deleted before it affects stock."""
+        transfer = self._locked_transfer(instance.pk)
+        if transfer.status != StockTransfer.STATUS_DRAFT:
+            raise ValidationError(
+                "انتقالی که تأیید یا اجرا شده باشد قابل حذف نیست."
+            )
+        if not has_store_access(self.request.user, transfer.source_store_id, {"manager"}):
+            raise PermissionDenied("فقط مدیر فروشگاه مبدأ می‌تواند پیش‌نویس انتقال را حذف کند.")
+        transfer.delete()
+
     @action(detail=True, methods=["post"])
     @transaction.atomic
     def approve(self, request, pk=None):
