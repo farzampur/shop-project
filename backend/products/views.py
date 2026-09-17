@@ -347,6 +347,12 @@ class InventoryViewSet(viewsets.ModelViewSet):
         delta = new_quantity - old_quantity
         inventory.quantity = new_quantity
         inventory.save(update_fields=["quantity", "updated_at"])
+
+        # A no-op adjustment changes no stock and must not create a zero-value
+        # ledger entry. InventoryTransaction enforces non-zero quantities at DB level.
+        if delta == 0:
+            return Response(InventorySerializer(inventory).data)
+
         InventoryTransaction.objects.create(
             product=inventory.product, store=inventory.store,
             transaction_type="adjustment", quantity=delta,
