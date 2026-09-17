@@ -50,7 +50,7 @@ class AccessControl610Tests(TestCase):
         self.cash_b = CashBox.objects.create(store=self.store_b, name="610 Cash B")
 
     def serializer(self, cls, instance=None, data=None):
-        return cls(instance=instance, data=data, context={"request": None})
+        return cls(instance=instance, data=data, partial=True, context={"request": None})
 
     def test_category_cannot_be_moved_between_stores(self):
         ser = self.serializer(CategorySerializer, self.cat_a, {"store": self.store_b.id})

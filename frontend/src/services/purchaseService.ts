@@ -17,6 +17,8 @@ export interface PurchaseItem {
   total_price: string;
   returned_quantity?: string;
   returnable_quantity?: string;
+  batch_id?: number | null;
+  batch_remaining_quantity?: string | null;
 }
 
 export interface Purchase {
@@ -46,7 +48,6 @@ export interface PurchaseWriteData {
   supplier: number;
   store: number;
   invoice_number: string;
-  received: boolean;
   items: PurchaseItemInput[];
 }
 

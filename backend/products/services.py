@@ -99,7 +99,18 @@ class PurchaseService:
                 "این خرید قبلاً دریافت شده است."
             )
 
+        # Lock product rows before creating/updating inventory. The unique
+        # (product, store) inventory constraint protects the database, while
+        # the product lock serializes the first-receive race where no Inventory
+        # row exists yet.
+        product_ids = sorted(purchase.items.values_list("product_id", flat=True))
+        locked_products = {
+            product.id: product
+            for product in Product.objects.select_for_update().filter(id__in=product_ids)
+        }
+
         for item in purchase.items.all():
+            locked_products.get(item.product_id)
 
             # ---------------------------------
             # بررسی تراکنش قبلی این قلم خرید

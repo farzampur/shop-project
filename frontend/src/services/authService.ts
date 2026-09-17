@@ -10,6 +10,7 @@ const authApi = axios.create({
     "Content-Type": "application/json",
   },
   withCredentials: true,
+  timeout: 15000,
 
   // Django CSRF defaults
   xsrfCookieName: "csrftoken",

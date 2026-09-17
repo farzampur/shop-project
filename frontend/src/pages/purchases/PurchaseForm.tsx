@@ -71,9 +71,6 @@ function PurchaseForm({
   const [invoiceNumber, setInvoiceNumber] =
     useState("");
 
-  const [received, setReceived] =
-    useState(false);
-
   const [items, setItems] =
     useState<PurchaseItem[]>([
       {
@@ -148,10 +145,6 @@ function PurchaseForm({
 
 		setInvoiceNumber(
 		  editingPurchase.invoice_number || ""
-		);
-
-		setReceived(
-		  editingPurchase.received
 		);
 
 		setItems(
@@ -343,7 +336,6 @@ const handleSubmit = async (
       supplier,
       store: activeStore.id,
       invoice_number: invoiceNumber.trim(),
-      received,
       items: items.map((item) => ({
         product: Number(item.product),
         quantity: item.quantity,
@@ -418,10 +410,13 @@ const handleSubmit = async (
 
       <Typography variant="body1">
         فروشگاه فعال:{" "}
-        <strong>
-          {activeStore.name}
-        </strong>
+        <strong>{activeStore.name}</strong>
       </Typography>
+
+      <Alert severity="info">
+        خرید ابتدا به‌صورت «دریافت نشده» ثبت می‌شود. پس از ثبت، از فهرست خریدها
+        روی «دریافت» بزنید تا موجودی و Batch مربوط به هر قلم ایجاد و فعال شود.
+      </Alert>
 
 
       {error && (
@@ -754,26 +749,6 @@ const handleSubmit = async (
         </Typography>
 
       </Box>
-
-
-      {/* وضعیت دریافت */}
-
-      <Button
-        variant={
-          received
-            ? "contained"
-            : "outlined"
-        }
-        onClick={() =>
-          setReceived(!received)
-        }
-      >
-        {received
-          ? "خرید دریافت شده است"
-          : "خرید دریافت نشده است"}
-      </Button>
-
-
       {/* دکمه‌ها */}
 
       <Stack

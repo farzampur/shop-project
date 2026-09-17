@@ -43,6 +43,11 @@ class CategorySerializer(serializers.ModelSerializer):
             "store_name",
         ]
 
+    def validate_store(self, value):
+        if self.instance is not None and value.id != self.instance.store_id:
+            raise serializers.ValidationError("دسته‌بندی نمی‌تواند به فروشگاه دیگری منتقل شود.")
+        return value
+
 
 class ProductSerializer(serializers.ModelSerializer):
 
@@ -147,6 +152,11 @@ class ProductSerializer(serializers.ModelSerializer):
         inventory = obj.inventories.filter(store_id=store_id).first()
         return inventory.quantity if inventory else 0
 
+
+    def validate_category(self, value):
+        if self.instance is not None and value.store_id != self.instance.category.store_id:
+            raise serializers.ValidationError("دسته‌بندی انتخاب‌شده متعلق به فروشگاه این کالا نیست.")
+        return value
 
     def to_internal_value(self, data):
 
@@ -332,8 +342,13 @@ class SupplierSerializer(
             "id",
             "created_at",
             "updated_at",
-        ]     
-        
+        ]
+
+    def validate_store(self, value):
+        if self.instance is not None and value.id != self.instance.store_id:
+            raise serializers.ValidationError("تأمین‌کننده نمی‌تواند به فروشگاه دیگری منتقل شود.")
+        return value
+
 
 class PurchaseItemSerializer(
     serializers.ModelSerializer
@@ -385,6 +400,12 @@ class PurchaseItemSerializer(
             # Their returnable quantity is still purchase quantity minus returns.
             pass
         return f"{remaining:.3f}"
+
+    def validate_product(self, value):
+        purchase = getattr(self.instance, "purchase", None)
+        if purchase is not None and value.category.store_id != purchase.store_id:
+            raise serializers.ValidationError("کالا متعلق به فروشگاه این خرید نیست.")
+        return value
 
     class Meta:
 
@@ -479,6 +500,13 @@ class PurchaseSerializer(
         obj
     ):
         return obj.items.count()
+
+    def validate_store(self, value):
+        if self.instance is not None and value.id != self.instance.store_id:
+            raise serializers.ValidationError(
+                "خرید نمی‌تواند به فروشگاه دیگری منتقل شود."
+            )
+        return value
 
     def validate(
         self,
@@ -923,4 +951,7 @@ class ProductPriceSerializer(serializers.ModelSerializer):
                 if other_end is None or start <= other_end:
                     if end is None or other.effective_from <= end:
                         raise serializers.ValidationError({"effective_from": "بازه زمانی این قیمت با یک قیمت دیگر هم‌پوشانی دارد."})
+        if product and store and product.category.store_id != store.id:
+            raise serializers.ValidationError({"store": "فروشگاه قیمت باید با فروشگاه کالا یکسان باشد."})
+
         return attrs

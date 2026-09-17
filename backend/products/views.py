@@ -574,7 +574,12 @@ class SupplierViewSet(
                 "شما به این فروشگاه دسترسی ندارید."
             )
 
-        instance.delete()
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                "تأمین‌کننده دارای سابقه خرید یا مالی است و قابل حذف نیست. در صورت نیاز، آن را غیرفعال کنید."
+            )
 
 
 class PurchaseViewSet(
@@ -4170,7 +4175,14 @@ class ProductBarcodeSearchView(APIView):
 
 class StockTransferViewSet(viewsets.ModelViewSet):
     serializer_class = StockTransferSerializer
-    permission_classes = [IsAuthenticated]
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse"},
+        "POST": {"manager", "warehouse"},
+        "PUT": {"manager", "warehouse"},
+        "PATCH": {"manager", "warehouse"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
 
     def get_queryset(self):
         qs = StockTransfer.objects.filter(
@@ -4434,7 +4446,14 @@ class StockTransferViewSet(viewsets.ModelViewSet):
 
 class ProductPriceViewSet(viewsets.ModelViewSet):
     serializer_class = ProductPriceSerializer
-    permission_classes = [IsAuthenticated]
+    allowed_roles_by_method = {
+        "GET": {"manager", "warehouse", "seller", "cashier"},
+        "POST": {"manager"},
+        "PUT": {"manager"},
+        "PATCH": {"manager"},
+        "DELETE": {"manager"},
+    }
+    permission_classes = [IsAuthenticated, StoreRolePermission]
 
     def get_queryset(self):
         qs = ProductPrice.objects.filter(store__store_users__user=self.request.user, store__store_users__is_active=True).select_related("product", "store", "created_by")

@@ -104,6 +104,8 @@ class StoreRolePermission(BasePermission):
             store = obj.category.store
         if store is None and hasattr(obj, "purchase"):
             store = obj.purchase.store
+        if store is None and hasattr(obj, "source_store"):
+            store = obj.source_store
         if store is None:
             return False
         role = get_user_store_role(request.user, store.id)

@@ -2,6 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Q
 
 from .models import Store, AuditLog
 from .serializers import StoreSerializer, AuditLogSerializer
@@ -48,8 +49,34 @@ class StoreViewSet(viewsets.ModelViewSet):
         obj = self.get_object()
         if UserStore.objects.filter(store=obj).exists():
             return Response({"detail": "شعبه‌ای که کاربر یا سابقه دسترسی دارد قابل حذف نیست؛ آن را غیرفعال کنید."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # A store is historical master data. Once it has business records,
+        # deleting it would cascade/remove data that is part of the audit trail.
+        from django.db.models.deletion import ProtectedError
+        from products.models import Category, Supplier, Purchase, Inventory, ProductBatch, StockTransfer
+        from sales.models import Customer, CustomerTransaction, Order, CashBox
+
+        has_history = any((
+            Category.objects.filter(store=obj).exists(),
+            Supplier.objects.filter(store=obj).exists(),
+            Purchase.objects.filter(store=obj).exists(),
+            Inventory.objects.filter(store=obj).exists(),
+            ProductBatch.objects.filter(store=obj).exists(),
+            StockTransfer.objects.filter(Q(source_store=obj) | Q(destination_store=obj)).exists(),
+            Customer.objects.filter(store=obj).exists(),
+            CustomerTransaction.objects.filter(store=obj).exists(),
+            Order.objects.filter(store=obj).exists(),
+            CashBox.objects.filter(store=obj).exists(),
+            AuditLog.objects.filter(store=obj).exists(),
+        ))
+        if has_history:
+            return Response({"detail": "فروشگاهی که سابقه عملیاتی یا مالی دارد قابل حذف نیست؛ آن را غیرفعال کنید."}, status=status.HTTP_400_BAD_REQUEST)
+
         store_id, name = obj.id, obj.name
-        obj.delete()
+        try:
+            obj.delete()
+        except ProtectedError:
+            return Response({"detail": "فروشگاهی که سابقه وابسته دارد قابل حذف نیست؛ آن را غیرفعال کنید."}, status=status.HTTP_400_BAD_REQUEST)
         audit(user=request.user, action="delete", model_name="Store", object_id=store_id, description=f"حذف فروشگاه {name}", store=None, metadata={"store_id": store_id})
         return Response(status=status.HTTP_204_NO_CONTENT)
 

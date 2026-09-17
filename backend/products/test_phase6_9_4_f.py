@@ -13,6 +13,8 @@ class BatchInvariantTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="phase694f", password="pw")
         self.store = Store.objects.create(name="Store 6.9.4 F", code="P694F")
+        self.destination_store = Store.objects.create(name="Store 6.9.4 F Destination", code="P694FD")
+        UserStore.objects.create(user=self.user, store=self.destination_store, role="manager", is_active=True)
         UserStore.objects.create(user=self.user, store=self.store, role="manager", is_active=True)
         category = Category.objects.create(name="Cat 6.9.4 F", store=self.store)
         self.product = Product.objects.create(name="Product 6.9.4 F", barcode="6940002", category=category, purchase_price=Decimal("50"), sale_price=Decimal("100"))
@@ -20,7 +22,7 @@ class BatchInvariantTests(TestCase):
         purchase = Purchase.objects.create(supplier=supplier, store=self.store, user=self.user, received=True)
         self.item = PurchaseItem.objects.create(purchase=purchase, product=self.product, quantity=Decimal("10"), unit_price=Decimal("50"), sale_price=Decimal("80"))
         self.batch = ProductBatch.objects.create(purchase_item=self.item, product=self.product, store=self.store, quantity=Decimal("10"), remaining_quantity=Decimal("10"), purchase_price=Decimal("50"), sale_price=Decimal("80"))
-        transfer = StockTransfer.objects.create(source_store=self.store, destination_store=self.store, created_by=self.user)
+        transfer = StockTransfer.objects.create(source_store=self.store, destination_store=self.destination_store, created_by=self.user)
         self.transfer_item = StockTransferItem.objects.create(transfer=transfer, product=self.product, quantity=Decimal("2"))
 
     def test_product_batch_remaining_cannot_exceed_quantity(self):

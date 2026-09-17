@@ -496,9 +496,19 @@ function Purchases() {
                     {selectedPurchase.invoice_number || "-"}
                   </Typography>
 
-                  <Typography sx={{ mb: 2 }}>
+                  <Typography sx={{ mb: 1 }}>
                     تاریخ:{" "}
                     {selectedPurchase.created_at}
+                  </Typography>
+
+                  <Typography sx={{ mb: 2 }}>
+                    وضعیت:{" "}
+                    <strong>
+                      {selectedPurchase.received ? "دریافت شده" : "دریافت نشده"}
+                    </strong>
+                    {selectedPurchase.received
+                      ? " — موجودی و Batch اقلام ایجاد شده است."
+                      : " — هنوز Batch و موجودی ناشی از این خرید ایجاد نشده است."}
                   </Typography>
 
                   <Divider sx={{ mb: 2 }} />
@@ -509,7 +519,10 @@ function Purchases() {
                         <TableCell>ردیف</TableCell>
                         <TableCell>محصول</TableCell>
                         <TableCell>تعداد</TableCell>
-                        <TableCell>قیمت واحد</TableCell>
+                        <TableCell>بچ</TableCell>
+                        <TableCell>مانده بچ</TableCell>
+                        <TableCell>قیمت خرید</TableCell>
+                        <TableCell>قیمت فروش بچ</TableCell>
                         <TableCell>مبلغ</TableCell>
                       </TableRow>
                     </TableHead>
@@ -531,8 +544,22 @@ function Purchases() {
                             </TableCell>
 
                             <TableCell>
+                              {item.batch_id ? `#${item.batch_id}` : "—"}
+                            </TableCell>
+
+                            <TableCell>
+                              {item.batch_remaining_quantity ?? "—"}
+                            </TableCell>
+
+                            <TableCell>
                               {Number(
                                 item.unit_price
+                              ).toLocaleString("fa-IR")}
+                            </TableCell>
+
+                            <TableCell>
+                              {Number(
+                                item.sale_price || 0
                               ).toLocaleString("fa-IR")}
                             </TableCell>
 
@@ -696,18 +723,15 @@ function Purchases() {
 			  <strong>
 			    {returnPurchase?.id}
 			  </strong>
-		    </Typography>
-
-		    {returnPurchase?.items?.map((item) => (
-			  <Typography
-			    key={item.id}
-			    sx={{ mt: 2 }}
-			  >
-			    {item.product_name} — مقدار خرید:
-			    {" "}
-			    {item.quantity}
-			  </Typography>
-		    ))}
+		    </Typography>            
+            {returnPurchase?.items?.map((item) => (
+              <Typography key={item.id} sx={{ mt: 2 }}>
+                {item.product_name} — خرید: {item.quantity} | برگشت‌شده:{" "}
+                {item.returned_quantity ?? "0.000"} | قابل برگشت:{" "}
+                {item.returnable_quantity ?? item.batch_remaining_quantity ?? item.quantity}
+                {item.batch_id ? ` | Batch #${item.batch_id}` : ""}
+              </Typography>
+            ))}
 						
 			<FormControl fullWidth sx={{ mt: 3 }}>
 			  <InputLabel>کالا</InputLabel>
@@ -716,9 +740,9 @@ function Purchases() {
 			  value={returnProduct}
 			  label="کالا"
 			  onChange={(event) => {
-				setReturnProduct(
-				  event.target.value as number
-				);
+				const productId = Number(event.target.value);
+				setReturnProduct(productId);
+				setReturnQuantity("");
 			  }}
 			>
 				{returnPurchase?.items?.map((item) => (
@@ -740,6 +764,7 @@ function Purchases() {
 			  label="مقدار برگشتی"
 			  type="number"
 			  value={returnQuantity}
+			  slotProps={{ htmlInput: { min: 0.001, step: 0.001 } }}
 			  onChange={(event) => {
 				const value = event.target.value;
 
@@ -776,7 +801,7 @@ function Purchases() {
 				<Typography sx={{ mt: 2 }}>
 				  حداکثر مقدار قابل برگشت:{" "}
 				  <strong>
-					{selectedItem.quantity}
+					{selectedItem.returnable_quantity ?? selectedItem.batch_remaining_quantity ?? selectedItem.quantity}
 				  </strong>
 				</Typography>
 			  );
@@ -828,7 +853,13 @@ function Purchases() {
 				onClick={handleReturnPurchase}
 				disabled={
 				  !returnProduct ||
-				  !returnQuantity
+				  !returnQuantity ||
+				  Number(returnQuantity) <= 0 ||
+				  Number(returnQuantity) > Number(
+				    returnPurchase?.items?.find(
+				      (item) => item.product === returnProduct
+				    )?.returnable_quantity ?? 0
+				  )
 				}
 			  >
 				ثبت برگشت

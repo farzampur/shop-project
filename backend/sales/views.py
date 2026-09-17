@@ -858,6 +858,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated, StoreRolePermission]
 
+    def perform_destroy(self, instance):
+        if instance.transactions.exists() or instance.orders.exists():
+            raise ValidationError("مشتری دارای سابقه مالی یا فروش است و قابل حذف نیست. در صورت نیاز، آن را غیرفعال کنید.")
+        instance.delete()
+
     def get_queryset(self):
         queryset = Customer.objects.filter(
             store_id__in=user_store_ids(self.request.user)
