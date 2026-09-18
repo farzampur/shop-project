@@ -71,3 +71,96 @@
   color: #68758a;
   text-align: center;
 }
+
+/* Phase B4 — responsive/UI integration */
+.page-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+.MuiTableContainer-root {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .section-card {
+    padding: 14px;
+  }
+
+  .metric-value {
+    font-size: 1.3rem;
+  }
+
+  .page-header {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 767px) {
+  .section-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .page-header {
+    margin-bottom: 9px;
+  }
+
+  .page-header-title {
+    min-width: 100%;
+  }
+
+  .page-header-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .page-header-actions > * {
+    min-width: 0;
+  }
+
+  .page-header-actions .MuiButton-root {
+    flex: 1 1 auto;
+  }
+
+  .MuiDialog-paper {
+    max-width: calc(100% - 16px) !important;
+  }
+
+  .MuiDialogContent-root {
+    overflow-x: hidden;
+  }
+
+  .MuiCardContent-root {
+    overflow-x: auto;
+  }
+
+  .MuiTable-root {
+    min-width: 500px;
+  }
+}
+
+@media (max-width: 480px) {
+  .section-card {
+    padding: 10px;
+  }
+
+  .page-header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header-actions .MuiButton-root {
+    width: 100%;
+  }
+
+  .MuiToolbar-root {
+    padding-inline: 6px !important;
+  }
+
+  .MuiDialog-paper {
+    margin: 8px !important;
+    width: calc(100% - 16px) !important;
+  }
+}
