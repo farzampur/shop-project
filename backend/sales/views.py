@@ -46,9 +46,19 @@ from .serializers import (
 
 from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
-from products.models import Product, Inventory, SupplierTransaction
+from products.models import Product, Inventory, ProductBatch, SupplierTransaction
 from core.audit import audit
 from products.pricing import get_effective_sale_price, get_active_batch
+
+
+def get_total_sellable_batch_quantity(product, store_id):
+    return (
+        ProductBatch.objects
+        .filter(product=product, store_id=store_id, remaining_quantity__gt=0)
+        .aggregate(total=Coalesce(Sum("remaining_quantity"), Decimal("0")))
+        ["total"]
+    )
+
 
 class CartViewSet(viewsets.ModelViewSet):
 
@@ -246,15 +256,17 @@ class CartItemViewSet(viewsets.ModelViewSet):
             )
 
         active_batch = get_active_batch(product, cart.store_id) if price_type == "retail" else None
-        if price_type == "retail" and active_batch is None:
-            raise ValidationError({"price_type": "برای این کالا بچ قابل فروش فعالی وجود ندارد."})
-        if active_batch is not None and quantity > active_batch.remaining_quantity:
-            raise ValidationError({
-                "quantity": (
-                    f"مقدار فروش خرده‌فروشی نمی‌تواند از باقی‌مانده بچ فعلی بیشتر باشد. "
-                    f"باقی‌مانده بچ: {active_batch.remaining_quantity}"
-                )
-            })
+        if price_type == "retail":
+            sellable_batch_quantity = get_total_sellable_batch_quantity(product, cart.store_id)
+            if sellable_batch_quantity <= 0:
+                raise ValidationError({"price_type": "برای این کالا موجودی بچ قابل فروش وجود ندارد."})
+            if quantity > sellable_batch_quantity:
+                raise ValidationError({
+                    "quantity": (
+                        f"موجودی بچ‌های قابل فروش کافی نیست. مجموع موجودی قابل فروش: "
+                        f"{sellable_batch_quantity}"
+                    )
+                })
 
         unit_price = get_effective_sale_price(product, cart.store_id, price_type=price_type)
         if unit_price is None:
@@ -325,12 +337,14 @@ class CartItemViewSet(viewsets.ModelViewSet):
             )
 
         if item.price_type == "retail":
-            active_batch = get_active_batch(item.product, item.cart.store_id)
-            if active_batch is None:
-                raise ValidationError("برای این کالا بچ قابل فروش فعالی وجود ندارد.")
-            if new_quantity > active_batch.remaining_quantity:
+            sellable_batch_quantity = get_total_sellable_batch_quantity(
+                item.product, item.cart.store_id
+            )
+            if sellable_batch_quantity <= 0:
+                raise ValidationError("برای این کالا موجودی بچ قابل فروش وجود ندارد.")
+            if new_quantity > sellable_batch_quantity:
                 raise ValidationError(
-                    f"مقدار خرده‌فروشی نمی‌تواند از باقی‌مانده بچ فعلی بیشتر باشد: {active_batch.remaining_quantity}"
+                    f"مجموع موجودی بچ‌های قابل فروش کافی نیست: {sellable_batch_quantity}"
                 )
 
         inventory = item.product.inventories.filter(

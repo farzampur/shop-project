@@ -5,6 +5,8 @@ from django.contrib.auth.models import User
 from core.models import Store
 from products.models import Category, Product, Supplier, Purchase, PurchaseItem, ProductBatch, Inventory
 from products.services import PurchaseService
+from sales.models import OrderItemBatch
+from rest_framework.exceptions import ValidationError
 from products.pricing import get_active_batch, get_effective_sale_price
 from sales.models import Cart, CartItem
 from sales.services import CheckoutService
@@ -49,13 +51,27 @@ class ProductBatchTests(TestCase):
         self.assertEqual(get_active_batch(self.product, self.store.id).id, second_batch.id)
         self.assertEqual(get_effective_sale_price(self.product, self.store.id), Decimal("155"))
 
-    def test_retail_cart_cannot_cross_current_batch(self):
+    def test_retail_sale_can_cross_batches_and_uses_each_batch_sale_price(self):
         self._purchase("5", "100", "130")
         self._purchase("7", "120", "155")
         cart = Cart.objects.create(user=self.user, store=self.store)
-        # This is a service-level invariant test: a single retail line must stay inside its active batch.
-        batch = get_active_batch(self.product, self.store.id)
-        self.assertEqual(batch.remaining_quantity, Decimal("5"))
+        CartItem.objects.create(
+            cart=cart, product=self.product, quantity=Decimal("7"),
+            unit_price=Decimal("130"), price_type="retail"
+        )
+
+        order = CheckoutService.checkout(cart, [])
+        items = list(order.items.order_by("id"))
+
+        self.assertEqual(
+            [(i.quantity, i.unit_price, i.purchase_price) for i in items],
+            [
+                (Decimal("5"), Decimal("130"), Decimal("100")),
+                (Decimal("2"), Decimal("155"), Decimal("120")),
+            ],
+        )
+        self.assertEqual(order.total_price, Decimal("960"))
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store).quantity, Decimal("5"))
 
     def test_fifo_allocation_is_shared_across_retail_and_wholesale_lines(self):
         self._purchase("9", "100", "130")
@@ -87,6 +103,49 @@ class ProductBatchTests(TestCase):
 
         first = ProductBatch.objects.order_by("received_at", "id").first()
         self.assertEqual(first.remaining_quantity, Decimal("0"))
+
+    def test_wholesale_sale_spans_batches_and_snapshots_weighted_cost(self):
+        self._purchase("5", "100", "130")
+        self._purchase("7", "120", "155")
+        cart = Cart.objects.create(user=self.user, store=self.store)
+        CartItem.objects.create(
+            cart=cart, product=self.product, quantity=Decimal("8"),
+            unit_price=Decimal("110"), price_type="wholesale"
+        )
+
+        order = CheckoutService.checkout(cart, [])
+        item = order.items.get(product=self.product)
+
+        self.assertEqual(item.quantity, Decimal("8"))
+        self.assertEqual(item.unit_price, Decimal("110"))
+        self.assertEqual(item.purchase_price, Decimal("105"))
+        allocations = list(
+            OrderItemBatch.objects.filter(order_item=item)
+            .order_by("id")
+            .values_list("quantity", "batch__purchase_price")
+        )
+        self.assertEqual(
+            allocations,
+            [(Decimal("5"), Decimal("100")), (Decimal("3"), Decimal("120"))],
+        )
+
+    def test_sale_rejects_when_batch_stock_is_less_than_inventory(self):
+        self._purchase("5", "100", "130")
+        inventory = Inventory.objects.get(product=self.product, store=self.store)
+        inventory.quantity = Decimal("8")
+        inventory.save(update_fields=["quantity", "updated_at"])
+
+        cart = Cart.objects.create(user=self.user, store=self.store)
+        CartItem.objects.create(
+            cart=cart, product=self.product, quantity=Decimal("6"),
+            unit_price=Decimal("130"), price_type="retail"
+        )
+
+        with self.assertRaises(ValidationError):
+            CheckoutService.checkout(cart, [])
+
+        self.assertEqual(ProductBatch.objects.get(purchase_item__purchase__items__product=self.product).remaining_quantity, Decimal("5"))
+        self.assertEqual(Inventory.objects.get(product=self.product, store=self.store).quantity, Decimal("8"))
 
     def test_sale_consumes_fifo_batch_and_snapshots_cost(self):
         self._purchase("5", "100", "130")
