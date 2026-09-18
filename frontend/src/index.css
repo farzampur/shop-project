@@ -34,3 +34,40 @@
     width: calc(100% - 24px);
   }
 }
+
+/* Phase B3 — UX feedback and resilient UI states */
+.MuiAlert-root {
+  border-radius: 10px;
+  align-items: center;
+}
+.MuiAlert-message {
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.MuiButton-root.Mui-disabled {
+  cursor: not-allowed;
+}
+.MuiCircularProgress-root {
+  display: block;
+}
+.MuiTableBody-root .MuiTableRow-root:last-child .MuiTableCell-root {
+  border-bottom: 0;
+}
+.MuiDialogContent-root .MuiAlert-root {
+  margin-block: 4px 10px;
+}
+.feedback-loading {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+}
+.feedback-loading-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.feedback-empty {
+  padding: 22px 12px !important;
+  color: #68758a;
+  text-align: center;
+}

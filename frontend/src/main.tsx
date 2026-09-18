@@ -4,6 +4,7 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 
 import App from "./App";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import theme from "./theme/theme";
 import "./index.css";
 
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <App />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
     </ThemeProvider>
   </React.StrictMode>
 );
