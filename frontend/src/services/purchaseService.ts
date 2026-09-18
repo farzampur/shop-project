@@ -101,3 +101,11 @@ export async function receivePurchase(id: number): Promise<Purchase> {
 export async function createPurchaseReturn(data: PurchaseReturnData): Promise<void> {
   await api.post("/products/purchase-returns/", data);
 }
+
+
+export async function getPurchaseReceipt(id: number): Promise<Blob> {
+  const response = await api.get(`/products/purchases/${id}/receipt/`, {
+    responseType: "blob",
+  });
+  return response.data;
+}

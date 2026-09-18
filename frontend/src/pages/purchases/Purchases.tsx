@@ -29,6 +29,7 @@ import {
 import {
   createPurchaseReturn,
   deletePurchase,
+  getPurchaseReceipt,
   listPurchases,
   receivePurchase,
   type Purchase,
@@ -74,6 +75,9 @@ function Purchases() {
  
   const [returnQuantity, setReturnQuantity] =
     useState("");
+
+  const [receiptLoadingId, setReceiptLoadingId] =
+    useState<number | null>(null);
   
   const loadPurchases = async () => {
     if (!activeStore) {
@@ -225,6 +229,28 @@ function Purchases() {
 		setReceiving(false);
 	  }
 	};
+
+  const handleDownloadReceipt = async (purchase: Purchase) => {
+    setReceiptLoadingId(purchase.id);
+    setError("");
+
+    try {
+      const blob = await getPurchaseReceipt(purchase.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `purchase-receipt-${purchase.id}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (receiptError: any) {
+      console.error("PURCHASE RECEIPT ERROR:", receiptError.response?.status);
+      setError("خطا در دریافت رسید خرید.");
+    } finally {
+      setReceiptLoadingId(null);
+    }
+  };
 
 	const handleReturnPurchase = async () => {
 	  if (!returnPurchase || !returnProduct || !returnQuantity) {
@@ -425,6 +451,15 @@ function Purchases() {
 						  >
 						    برگشت خرید
 						  </Button>
+
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            disabled={receiptLoadingId === purchase.id}
+                            onClick={() => void handleDownloadReceipt(purchase)}
+                          >
+                            {receiptLoadingId === purchase.id ? "در حال دریافت..." : "رسید خرید"}
+                          </Button>
 
 						  <Button
 						    size="small"

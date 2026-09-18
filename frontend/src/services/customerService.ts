@@ -85,3 +85,40 @@ export async function createCustomerPayment(data: {
 }): Promise<CustomerTransaction> {
   return (await api.post<CustomerTransaction>("/sales/customer-transactions/", data)).data;
 }
+
+
+export interface CustomerReportRow {
+  id: number;
+  name: string;
+  mobile: string;
+  order_count: number;
+  total_purchase: string | number;
+  last_order_date: string | null;
+}
+
+export interface CustomerDebtorRow {
+  customer_id: number;
+  customer_name: string;
+  balance: string | number;
+}
+
+export interface CustomerCreditorRow {
+  customer_id: number;
+  customer_name: string;
+  credit: string | number;
+}
+
+export async function getCustomerReport(storeId?: number): Promise<CustomerReportRow[]> {
+  const r = await api.get<ApiListResponse<CustomerReportRow>>("/sales/customer-report/", { params: storeId ? { store: storeId } : undefined });
+  return Array.isArray(r.data) ? r.data : r.data.results;
+}
+
+export async function getCustomerDebtors(storeId?: number): Promise<CustomerDebtorRow[]> {
+  const r = await api.get<ApiListResponse<CustomerDebtorRow>>("/sales/customers/debtors/", { params: storeId ? { store: storeId } : undefined });
+  return Array.isArray(r.data) ? r.data : r.data.results;
+}
+
+export async function getCustomerCreditors(storeId?: number): Promise<CustomerCreditorRow[]> {
+  const r = await api.get<ApiListResponse<CustomerCreditorRow>>("/sales/customers/creditors/", { params: storeId ? { store: storeId } : undefined });
+  return Array.isArray(r.data) ? r.data : r.data.results;
+}

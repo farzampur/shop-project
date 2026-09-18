@@ -52,3 +52,33 @@ export async function updateProduct(
 export async function deleteProduct(id: number): Promise<void> {
   await api.delete(`/products/products/${id}/`);
 }
+
+
+export async function getProductBarcode(productId: number): Promise<Blob> {
+  const response = await api.get(`/products/products/${productId}/barcode/`, {
+    responseType: "blob",
+  });
+  return response.data;
+}
+
+export async function getProductQRCode(productId: number): Promise<Blob> {
+  const response = await api.get(`/products/products/${productId}/qrcode/`, {
+    responseType: "blob",
+  });
+  return response.data;
+}
+
+export async function getProductLabel(productId: number): Promise<Blob> {
+  const response = await api.get(`/products/products/${productId}/label/`, {
+    responseType: "blob",
+  });
+  return response.data;
+}
+
+export async function getProductLabels(productId: number, count = 9): Promise<Blob> {
+  const response = await api.get(`/products/products/${productId}/labels/`, {
+    params: { count },
+    responseType: "blob",
+  });
+  return response.data;
+}
