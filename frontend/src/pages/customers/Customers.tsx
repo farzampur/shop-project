@@ -53,6 +53,7 @@ export default function Customers() {
   useEffect(() => { void load(); }, [activeStore?.id, activeRole]);
 
   const openReport = async (type: "summary" | "debtors" | "creditors") => {
+    if (!activeStore) return;
     setReportType(type); setReportOpen(true); setReportRows([]); setReportLoading(true); setError("");
     try {
       const rows = type === "summary" ? await getCustomerReport(activeStore.id) : type === "debtors" ? await getCustomerDebtors(activeStore.id) : await getCustomerCreditors(activeStore.id);
