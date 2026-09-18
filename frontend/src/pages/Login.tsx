@@ -45,13 +45,11 @@ function Login() {
 	  console.error("STATUS:", error.response?.status);
 	  console.error("DATA:", error.response?.data);
 
-      const data = error?.response?.data;
-      const message =
-        typeof data?.detail === "string" ? data.detail :
-        typeof data?.message === "string" ? data.message :
-        typeof data === "string" ? data :
-        "نام کاربری یا رمز عبور نادرست است یا ارتباط با سرور برقرار نشد.";
-      setError(message);
+	  setError(
+		error.response?.data
+		  ? JSON.stringify(error.response.data)
+		  : "خطا در ارتباط با سرور"
+	  );
     } finally {
       setLoading(false);
     }

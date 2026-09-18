@@ -4,17 +4,17 @@ import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 
 import App from "./App";
-import ErrorBoundary from "./components/ErrorBoundary";
 import theme from "./theme/theme";
 import "./index.css";
+
+document.documentElement.dir = "rtl";
+document.documentElement.lang = "fa";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
+      <App />
     </ThemeProvider>
   </React.StrictMode>
 );

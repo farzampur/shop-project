@@ -37,8 +37,8 @@ import MenuIcon from "@mui/icons-material/Menu";
 import { useStore } from "../contexts/StoreContext";
 import { canAccessRoute, type AppRouteKey } from "../services/routePermissions";
 
-const drawerWidth = 220;
-const collapsedDrawerWidth = 68;
+const drawerWidth = 204;
+const collapsedDrawerWidth = 60;
 
 type MenuItem = {
   key: AppRouteKey;
@@ -102,13 +102,8 @@ function DashboardLayout() {
   }, []);
 
   const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error("LOGOUT ERROR:", error);
-    } finally {
-      navigate("/login", { replace: true });
-    }
+    await logout();
+    navigate("/login", { replace: true });
   };
 
   const handleStoreChange = (event: SelectChangeEvent<number>) => {
@@ -136,13 +131,13 @@ function DashboardLayout() {
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", direction: "rtl" }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, right: mobile ? 0 : 8, left: mobile ? 0 : 8, top: mobile ? 0 : 8, width: "auto", borderRadius: mobile ? 0 : 3 }}>
-        <Toolbar sx={{ minHeight: mobile ? 56 : 54, gap: 1, px: mobile ? 1 : 2 }}>
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, right: mobile ? 0 : 8, left: mobile ? 0 : 8, top: mobile ? 0 : 6, width: "auto", borderRadius: mobile ? 0 : 2 }}>
+        <Toolbar sx={{ minHeight: mobile ? 52 : 50, gap: 0.75, px: mobile ? 0.75 : 1.25 }}>
           <ListItemButton onClick={toggleDrawer} sx={{ minWidth: 44, width: 44, height: 40, p: 0, justifyContent: "center", borderRadius: 2 }} aria-label={drawerOpen ? "بستن منو" : "باز کردن منو"}>
             {drawerOpen ? <MenuOpenIcon /> : <MenuIcon />}
           </ListItemButton>
           {drawerOpen && <Typography variant="h6" sx={{ mr: 1 }}>فروشگاه:</Typography>}
-          <FormControl size="small" sx={{ minWidth: mobile ? 0 : 220, width: mobile ? 150 : "auto", backgroundColor: "white", borderRadius: 1 }}>
+          <FormControl size="small" sx={{ minWidth: mobile ? 0 : 190, width: mobile ? 145 : "auto", backgroundColor: "white", borderRadius: 1 }}>
             <Select
               value={activeStore?.id ?? ""}
               onChange={handleStoreChange}
@@ -178,11 +173,11 @@ function DashboardLayout() {
           flexShrink: 0,
           "& .MuiDrawer-paper": {
             boxSizing: "border-box",
-            top: mobile ? 0 : 70,
+            top: mobile ? 0 : 62,
             right: mobile ? 0 : 8,
-            height: mobile ? "100vh" : "calc(100vh - 78px)",
+            height: mobile ? "100vh" : "calc(100vh - 68px)",
             width: mobile ? "min(86vw, 300px)" : (drawerOpen ? drawerWidth : collapsedDrawerWidth),
-            borderRadius: mobile ? 0 : 3,
+            borderRadius: mobile ? 0 : 2,
             overflow: "hidden",
             zIndex: mobile ? 1400 : "auto",
             boxShadow: "0 12px 35px rgba(31,48,77,.12)",
@@ -191,7 +186,7 @@ function DashboardLayout() {
           },
         }}
       >
-        <List sx={{ pt: 1, flex: 1, overflowY: "auto" }}>
+        <List sx={{ pt: 0.5, flex: 1, overflowY: "auto" }}>
           {visibleMenuItems.map((item) => {
             const selected = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
             return (
@@ -199,27 +194,27 @@ function DashboardLayout() {
                 key={item.path}
                 selected={selected}
                 onClick={() => handleNavigate(item.path)}
-                sx={{ minHeight: 38, py: 0.25 }}
+                sx={{ minHeight: 36, py: 0.15 }}
               >
                 <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
-                {(drawerOpen || mobile) && <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />}
+                {(drawerOpen || mobile) && <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.8rem" } }} />}
               </ListItemButton>
             );
           })}
         </List>
 
-        <Box sx={{ borderTop: "1px solid #e8edf5", p: 1, backgroundColor: "rgba(255,255,255,.96)" }}>
+        <Box sx={{ borderTop: "1px solid #e8edf5", p: 0.75, backgroundColor: "rgba(255,255,255,.96)" }}>
           <ListItemButton
             onClick={handleLogout}
-            sx={{ minHeight: 40, py: 0.25, color: "error.main", fontWeight: 700 }}
+            sx={{ minHeight: 36, py: 0.15, color: "error.main", fontWeight: 700 }}
           >
             <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
-            {(drawerOpen || mobile) && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />}
+            {(drawerOpen || mobile) && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.8rem", fontWeight: 700 } }} />}
           </ListItemButton>
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, p: mobile ? 0.75 : 1, mt: mobile ? 7 : 8, mr: 0, transition: "margin .2s ease", overflowX: "hidden" }}>
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, p: mobile ? 0.5 : 0.75, mt: mobile ? 6.5 : 7.5, mr: 0, transition: "margin .2s ease", overflowX: "hidden" }}>
         <Outlet />
       </Box>
     </Box>
