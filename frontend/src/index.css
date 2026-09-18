@@ -1,3 +1,36 @@
 :root{font-family:Tahoma,Arial,sans-serif;color:#172033;background:#f5f7fb;font-synthesis:none;text-rendering:optimizeLegibility}
 *{box-sizing:border-box} html,body,#root{margin:0;min-width:320px;min-height:100%;direction:rtl} body{background:linear-gradient(135deg,#f7f9fc 0%,#eef3f9 100%);color:#172033;line-height:1.5} button,input,select,textarea{font-family:inherit}.MuiPaper-root{box-shadow:0 6px 22px rgba(31,48,77,.06)!important;border:1px solid rgba(30,55,90,.07)}.MuiCard-root{border-radius:14px!important}.MuiButton-root{border-radius:9px!important;font-weight:700!important}.MuiTextField-root .MuiOutlinedInput-root{border-radius:9px}.MuiTableHead-root .MuiTableCell-root{font-weight:800;background:#f8fafc}.MuiDrawer-paper{background:linear-gradient(180deg,#ffffff 0%,#f7f9fd 100%)!important;border-left:1px solid #e8edf5!important}.MuiAppBar-root{background:rgba(255,255,255,.94)!important;color:#172033!important;backdrop-filter:blur(14px);border-bottom:1px solid #e7ebf2;box-shadow:0 3px 16px rgba(20,40,70,.05)!important}.MuiListItemButton-root{margin:2px 8px;border-radius:9px}.MuiListItemButton-root.Mui-selected{background:linear-gradient(90deg,#e8f0ff,#f4f7ff)!important;color:#1456b8}.MuiListItemButton-root:hover{background:#f1f5fb}.page-shell{max-width:1500px;margin:0 auto}.kpi-grid{margin-top:14px}.soft-title{font-weight:800;letter-spacing:-.3px}.muted{color:#68758a}.status-good{color:#18794e}.status-warn{color:#9a6700}.status-danger{color:#b42318}.metric-value{font-size:1.45rem;font-weight:850}.section-card{padding:18px;border-radius:14px;background:rgba(255,255,255,.92)}
 .page-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;direction:rtl;text-align:right;flex-wrap:wrap}.page-header-title{flex:1;min-width:220px;text-align:right}.page-header-actions{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap}.page-header-actions .MuiButton-root{white-space:nowrap}@media(max-width:600px){.page-header{align-items:stretch}.page-header-title{min-width:100%}.page-header-actions{width:100%;justify-content:flex-start}}
+
+
+/* Phase B2 — compact, consistent forms and tables */
+.MuiFormControl-root,
+.MuiTextField-root {
+  margin-block: 0;
+}
+.MuiOutlinedInput-root.MuiInputBase-sizeSmall {
+  min-height: 36px;
+}
+.MuiTableContainer-root {
+  border-radius: 10px;
+}
+.MuiTable-root .MuiTableCell-root {
+  vertical-align: middle;
+}
+.MuiTable-root .MuiTableBody-root .MuiTableRow-root:hover {
+  background: rgba(37, 99, 235, 0.025);
+}
+.MuiCheckbox-root,
+.MuiRadio-root,
+.MuiSwitch-root {
+  padding: 5px;
+}
+@media (max-width: 600px) {
+  .MuiTable-root {
+    min-width: 500px;
+  }
+  .MuiDialog-paper {
+    margin: 12px;
+    width: calc(100% - 24px);
+  }
+}
