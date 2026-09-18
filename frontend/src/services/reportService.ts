@@ -30,3 +30,15 @@ export async function storeComparison(p?: ReportParams) { return (await api.get<
 export async function sellerPerformance(p?: ReportParams) { return (await api.get<SellerPerformance[]>("/sales/sales-report/seller_performance/", query(p))).data; }
 export async function inventoryOverview(p?: ReportParams) { return (await api.get<InventoryOverview[]>("/sales/sales-report/inventory_overview/", query(p))).data; }
 export async function lowStockReport(p?: ReportParams) { return (await api.get<LowStock[]>("/sales/sales-report/low_stock/", query(p))).data; }
+
+
+export type FinancialSummary = { sales:string|number; cost_of_goods_sold:string|number; gross_profit:string|number; expenses:string|number; net_profit:string|number; customer_receivable:string|number; supplier_payable:string|number; cash_balance:string|number; order_count:number; filters:{start_date:string|null;end_date:string|null} };
+export type FinancialCashFlow = { receipts:string|number; payments:string|number; net_cash_flow:string|number };
+export type CashLedgerRow = { id:number; cashbox:string; type:string; amount:string|number; reference_id:number|null; description:string };
+export type CashBoxBalanceRow = { id:number; name:string; store:string; balance:string|number; transaction_count:number; receive_count:number; payment_count:number };
+export type DailyCashFlowRow = { day:string; transaction_count:number; receipts:string|number; payments:string|number; net_cash_flow:string|number };
+export async function financialSummary(p?: ReportParams) { return (await api.get<FinancialSummary>("/sales/financial-summary/", query(p))).data; }
+export async function cashFinancialReport(p?: ReportParams) { return (await api.get<FinancialCashFlow>("/sales/financial-report/", query(p))).data; }
+export async function cashLedger(p?: ReportParams) { return (await api.get<CashLedgerRow[]>("/sales/cash-ledger/", query(p))).data; }
+export async function cashboxBalanceReport(p?: ReportParams) { return (await api.get<CashBoxBalanceRow[]>("/sales/cashbox-balance-report/", query(p))).data; }
+export async function dailyCashFlowReport(p?: ReportParams) { return (await api.get<DailyCashFlowRow[]>("/sales/daily-cash-flow-report/", query(p))).data; }

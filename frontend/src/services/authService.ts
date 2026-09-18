@@ -31,6 +31,7 @@ export interface RefreshResponse {
 let csrfReady = false;
 let csrfPromise: Promise<void> | null = null;
 let refreshPromise: Promise<string> | null = null;
+let logoutPromise: Promise<void> | null = null;
 
 async function ensureCsrfCookie(): Promise<void> {
   if (csrfReady) {
@@ -93,16 +94,20 @@ export function saveTokens(tokens: LoginResponse) {
   tokenService.saveAccessToken(tokens.access);
 }
 
-export async function logout() {
-  try {
-    await ensureCsrfCookie();
-
-    await authApi.post(
-      "/auth/token/blacklist/",
-      {}
-    );
-  } finally {
-    tokenService.clearTokens();
-    window.dispatchEvent(new Event("auth-change"));
+export function logout(): Promise<void> {
+  if (!logoutPromise) {
+    logoutPromise = (async () => {
+      try {
+        await ensureCsrfCookie();
+        await authApi.post("/auth/token/blacklist/", {});
+      } finally {
+        tokenService.clearTokens();
+        window.dispatchEvent(new Event("auth-change"));
+      }
+    })().finally(() => {
+      logoutPromise = null;
+    });
   }
+
+  return logoutPromise;
 }

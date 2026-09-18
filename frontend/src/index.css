@@ -2,38 +2,3 @@
 *{box-sizing:border-box} html,body,#root{margin:0;min-width:320px;min-height:100%;direction:rtl} body{background:linear-gradient(135deg,#f7f9fc 0%,#eef3f9 100%);color:#172033} button,input,select,textarea{font-family:inherit}.MuiPaper-root{box-shadow:0 8px 28px rgba(31,48,77,.07)!important;border:1px solid rgba(30,55,90,.07)}.MuiCard-root{border-radius:18px!important}.MuiButton-root{border-radius:12px!important;font-weight:700!important}.MuiTextField-root .MuiOutlinedInput-root{border-radius:12px}.MuiTableHead-root .MuiTableCell-root{font-weight:800;background:#f8fafc}.MuiDrawer-paper{background:linear-gradient(180deg,#ffffff 0%,#f7f9fd 100%)!important;border-left:1px solid #e8edf5!important}.MuiAppBar-root{background:rgba(255,255,255,.92)!important;color:#172033!important;backdrop-filter:blur(14px);border-bottom:1px solid #e7ebf2;box-shadow:0 4px 20px rgba(20,40,70,.06)!important}.MuiListItemButton-root{margin:4px 10px;border-radius:12px}.MuiListItemButton-root.Mui-selected{background:linear-gradient(90deg,#e8f0ff,#f4f7ff)!important;color:#1456b8}.MuiListItemButton-root:hover{background:#f1f5fb}.page-shell{max-width:1500px;margin:0 auto}.kpi-grid{margin-top:18px}.soft-title{font-weight:800;letter-spacing:-.3px}.muted{color:#68758a}.status-good{color:#18794e}.status-warn{color:#9a6700}.status-danger{color:#b42318}.metric-value{font-size:1.55rem;font-weight:850}.section-card{padding:22px;border-radius:18px;background:rgba(255,255,255,.92)}
 
 .page-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;direction:rtl;text-align:right;flex-wrap:wrap}.page-header-title{flex:1;min-width:220px;text-align:right}.page-header-actions{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;flex-wrap:wrap}.page-header-actions .MuiButton-root{white-space:nowrap}@media(max-width:600px){.page-header{align-items:stretch}.page-header-title{min-width:100%}.page-header-actions{width:100%;justify-content:flex-start}}
-
-
-/* Mobile production layout */
-@media (max-width: 767px){
-  html,body,#root{min-width:320px;width:100%;overflow-x:hidden}
-  .page-shell{width:100%;max-width:none;margin:0;padding:0}
-  .page-header{margin-bottom:12px;gap:8px;padding:0 2px}
-  .page-header-title{min-width:100%;width:100%}
-  .page-header-title h1,.page-header-title h2,.page-header-title h3,.page-header-title .MuiTypography-h4,.page-header-title .MuiTypography-h5,.page-header-title .MuiTypography-h6{font-size:1.08rem;line-height:1.45}
-  .page-header-actions{width:100%;justify-content:flex-start}
-  .page-header-actions .MuiButton-root{min-height:38px;font-size:.78rem;padding:6px 10px}
-  .MuiPaper-root{border-radius:14px!important}
-  .MuiCard-root{border-radius:14px!important}
-  .MuiTableContainer-root{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .MuiTable-root{min-width:620px}
-  .MuiTableCell-root{padding:7px 8px!important;font-size:.76rem!important;white-space:nowrap}
-  .MuiTableHead-root .MuiTableCell-root{font-size:.74rem!important}
-  .MuiButton-root{min-height:38px;font-size:.78rem!important;padding:6px 10px!important}
-  .MuiTextField-root,.MuiFormControl-root{max-width:100%}
-  .MuiDialog-paper{margin:10px!important;width:calc(100% - 20px)!important;max-width:none!important;border-radius:16px!important}
-  .MuiDialogContent-root{padding:14px!important}
-  .MuiToolbar-root .MuiFormControl-root{width:150px!important;min-width:0!important}
-  .MuiToolbar-root .MuiSelect-select{padding:8px 9px!important;font-size:.78rem!important}
-  .MuiToolbar-root{overflow:hidden}
-  .section-card{padding:12px;border-radius:14px}
-  .kpi-grid{margin-top:10px}
-  .metric-value{font-size:1.25rem}
-}
-
-@media (max-width: 430px){
-  .MuiToolbar-root .MuiFormControl-root{width:128px!important}
-  .MuiToolbar-root .MuiTypography-root{font-size:.78rem}
-  .page-header-actions .MuiButton-root{flex:0 1 auto}
-  .MuiGrid-root>.MuiGrid-item{padding-top:6px!important}
-}

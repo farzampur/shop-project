@@ -1,83 +1,37 @@
 import api from "./api";
-import type { ApiListResponse } from "./apiTypes";
 
-export type ReportFilter = {
-  store?: number;
-  start_date?: string;
-  end_date?: string;
-};
+export type ReportFilter = { store?: number | null; start_date?: string; end_date?: string };
 
-const params = (filter: ReportFilter = {}) => ({
+const query = (filter: ReportFilter = {}) => ({
   params: Object.fromEntries(
     Object.entries(filter).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   ),
 });
 
-const list = <T,>(data: ApiListResponse<T>): T[] => (Array.isArray(data) ? data : data.results);
+const get = async <T = unknown>(path: string, filter?: ReportFilter): Promise<T> =>
+  (await api.get<T>(path, query(filter))).data;
 
-export async function inventoryLowStock(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/inventory-low-stock/", params(filter))).data);
-}
-export async function inventoryOutOfStock(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/inventory-out-of-stock/", params(filter))).data);
-}
-export async function inventoryValueReport(filter?: ReportFilter) {
-  return (await api.get<unknown>("/products/inventory-value-report/", params(filter))).data;
-}
-export async function inventorySlowMoving(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/inventory-slow-moving/", params(filter))).data);
-}
-export async function inventoryPotentialProfit(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/inventory-potential-profit/", params(filter))).data);
-}
-export async function storeInventorySummary(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/store-inventory-summary/", params(filter))).data);
-}
-export async function fullInventoryReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/inventory-report-full/", params(filter))).data);
-}
-export async function inventoryDashboard(filter?: ReportFilter) {
-  return (await api.get<unknown>("/products/inventory-dashboard/", params(filter))).data;
-}
+export const inventoryLowStock = (f?: ReportFilter) => get("/products/inventory-low-stock/", f);
+export const inventoryOutOfStock = (f?: ReportFilter) => get("/products/inventory-out-of-stock/", f);
+export const inventoryValueReport = (f?: ReportFilter) => get("/products/inventory-value-report/", f);
+export const inventorySlowMoving = (f?: ReportFilter) => get("/products/inventory-slow-moving/", f);
+export const inventoryPotentialProfit = (f?: ReportFilter) => get("/products/inventory-potential-profit/", f);
+export const storeInventorySummary = (f?: ReportFilter) => get("/products/store-inventory-summary/", f);
+export const fullInventoryReport = (f?: ReportFilter) => get("/products/inventory-report-full/", f);
+export const inventoryDashboard = (f?: ReportFilter) => get("/products/inventory-dashboard/", f);
 
-export async function supplierDebtors(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/suppliers/debtors/", params(filter))).data);
-}
-export async function supplierPurchaseReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/suppliers/purchase-report/", params(filter))).data);
-}
-export async function supplierPaymentReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/suppliers/payment-report/", params(filter))).data);
-}
-export async function supplierBalanceReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/suppliers/balance-report/", params(filter))).data);
-}
-export async function supplierComprehensiveReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/products/suppliers/comprehensive-report/", params(filter))).data);
-}
+export const supplierDebtors = (f?: ReportFilter) => get("/products/suppliers/debtors/", f);
+export const supplierPurchaseReport = (f?: ReportFilter) => get("/products/suppliers/purchase-report/", f);
+export const supplierPaymentReport = (f?: ReportFilter) => get("/products/suppliers/payment-report/", f);
+export const supplierBalanceReport = (f?: ReportFilter) => get("/products/suppliers/balance-report/", f);
+export const supplierComprehensiveReport = (f?: ReportFilter) => get("/products/suppliers/comprehensive-report/", f);
 
-export async function customerReport(filter?: ReportFilter) {
-  return (await api.get<unknown>("/sales/customer-report/", params(filter))).data;
-}
-export async function customerDebtors(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/sales/customers/debtors/", params(filter))).data);
-}
-export async function customerCreditors(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/sales/customers/creditors/", params(filter))).data);
-}
+export const customerReport = (f?: ReportFilter) => get("/sales/customer-report/", f);
+export const customerDebtors = (f?: ReportFilter) => get("/sales/customers/debtors/", f);
+export const customerCreditors = (f?: ReportFilter) => get("/sales/customers/creditors/", f);
 
-export async function financialSummary(filter?: ReportFilter) {
-  return (await api.get<unknown>("/sales/financial-summary/", params(filter))).data;
-}
-export async function financialReport(filter?: ReportFilter) {
-  return (await api.get<unknown>("/sales/financial-report/", params(filter))).data;
-}
-export async function cashLedger(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/sales/cash-ledger/", params(filter))).data);
-}
-export async function cashboxBalanceReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/sales/cashbox-balance-report/", params(filter))).data);
-}
-export async function dailyCashFlowReport(filter?: ReportFilter) {
-  return list((await api.get<ApiListResponse<unknown>>("/sales/daily-cash-flow-report/", params(filter))).data);
-}
+export const financialSummary = (f?: ReportFilter) => get("/sales/financial-summary/", f);
+export const financialReport = (f?: ReportFilter) => get("/sales/financial-report/", f);
+export const cashLedger = (f?: ReportFilter) => get("/sales/cash-ledger/", f);
+export const cashboxBalanceReport = (f?: ReportFilter) => get("/sales/cashbox-balance-report/", f);
+export const dailyCashFlowReport = (f?: ReportFilter) => get("/sales/daily-cash-flow-report/", f);

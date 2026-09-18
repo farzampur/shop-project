@@ -31,7 +31,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import PriceChangeIcon from "@mui/icons-material/PriceChange";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
 import MenuIcon from "@mui/icons-material/Menu";
 import { useStore } from "../contexts/StoreContext";
@@ -58,13 +58,14 @@ const menuItems: readonly MenuItem[] = [
   { key: "customers", title: "مشتریان", path: "/customers", icon: <PeopleIcon /> },
   { key: "cashbox", title: "صندوق", path: "/cashbox", icon: <AccountBalanceIcon /> },
   { key: "reports", title: "گزارش‌ها", path: "/reports", icon: <AssessmentIcon /> },
-  { key: "advancedReports", title: "گزارش‌های تکمیلی", path: "/advanced-reports", icon: <AssessmentIcon /> },
+  { key: "financialReports", title: "گزارش مالی و صندوق", path: "/financial-reports", icon: <AccountBalanceIcon /> },
   { key: "cashClose", title: "بستن صندوق", path: "/cash-close", icon: <LockClockIcon /> },
   { key: "audit", title: "گزارش فعالیت", path: "/audit", icon: <FactCheckIcon /> },
   { key: "users", title: "کاربران و کارکنان", path: "/users", icon: <AdminPanelSettingsIcon /> },
   { key: "stores", title: "مدیریت شعب", path: "/stores", icon: <StorefrontIcon /> },
   { key: "transfers", title: "انتقال بین شعب", path: "/transfers", icon: <SwapHorizIcon /> },
   { key: "pricing", title: "قیمت‌گذاری", path: "/pricing", icon: <PriceChangeIcon /> },
+  { key: "advancedReports", title: "گزارش‌های تکمیلی", path: "/advanced-reports", icon: <AssessmentIcon /> },
 ];
 
 const roleLabels = {
@@ -77,7 +78,8 @@ const roleLabels = {
 function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [drawerOpen, setDrawerOpen] = useState(() => localStorage.getItem("dashboard_drawer_open") !== "false");
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 767px)").matches);
+  const [drawerOpen, setDrawerOpen] = useState(() => !window.matchMedia("(max-width: 767px)").matches && localStorage.getItem("dashboard_drawer_open") !== "false");
   const {
     user,
     activeRole,
@@ -87,9 +89,26 @@ function DashboardLayout() {
     loading: storeLoading,
   } = useStore();
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 767px)");
+    const handleChange = () => {
+      const isMobile = media.matches;
+      setMobile(isMobile);
+      if (isMobile) setDrawerOpen(false);
+      else setDrawerOpen(localStorage.getItem("dashboard_drawer_open") !== "false");
+    };
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
+
   const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
+    try {
+      await logout();
+    } catch (error) {
+      console.error("LOGOUT ERROR:", error);
+    } finally {
+      navigate("/login", { replace: true });
+    }
   };
 
   const handleStoreChange = (event: SelectChangeEvent<number>) => {
@@ -101,9 +120,14 @@ function DashboardLayout() {
   const toggleDrawer = () => {
     setDrawerOpen((current) => {
       const next = !current;
-      localStorage.setItem("dashboard_drawer_open", String(next));
+      if (!mobile) localStorage.setItem("dashboard_drawer_open", String(next));
       return next;
     });
+  };
+
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (mobile) setDrawerOpen(false);
   };
 
   const visibleMenuItems = menuItems.filter((item) =>
@@ -112,13 +136,13 @@ function DashboardLayout() {
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", direction: "rtl" }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, right: drawerOpen ? 8 : 8, left: 8, top: 8, width: "auto", borderRadius: 3 }}>
-        <Toolbar sx={{ minHeight: 54, gap: 1 }}>
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, right: mobile ? 0 : 8, left: mobile ? 0 : 8, top: mobile ? 0 : 8, width: "auto", borderRadius: mobile ? 0 : 3 }}>
+        <Toolbar sx={{ minHeight: mobile ? 56 : 54, gap: 1, px: mobile ? 1 : 2 }}>
           <ListItemButton onClick={toggleDrawer} sx={{ minWidth: 44, width: 44, height: 40, p: 0, justifyContent: "center", borderRadius: 2 }} aria-label={drawerOpen ? "بستن منو" : "باز کردن منو"}>
             {drawerOpen ? <MenuOpenIcon /> : <MenuIcon />}
           </ListItemButton>
           {drawerOpen && <Typography variant="h6" sx={{ mr: 1 }}>فروشگاه:</Typography>}
-          <FormControl size="small" sx={{ minWidth: 220, backgroundColor: "white", borderRadius: 1 }}>
+          <FormControl size="small" sx={{ minWidth: mobile ? 0 : 220, width: mobile ? 150 : "auto", backgroundColor: "white", borderRadius: 1 }}>
             <Select
               value={activeStore?.id ?? ""}
               onChange={handleStoreChange}
@@ -146,19 +170,21 @@ function DashboardLayout() {
       </AppBar>
 
       <Drawer
-        variant="permanent"
+        variant={mobile ? "temporary" : "permanent"}
+        open={drawerOpen}
         anchor="right"
         sx={{
-          width: drawerOpen ? drawerWidth : collapsedDrawerWidth,
+          width: mobile ? 0 : (drawerOpen ? drawerWidth : collapsedDrawerWidth),
           flexShrink: 0,
           "& .MuiDrawer-paper": {
-            width: drawerOpen ? drawerWidth : collapsedDrawerWidth,
             boxSizing: "border-box",
-            top: 70,
-            right: drawerOpen ? 8 : 8,
-            height: "calc(100vh - 78px)",
-            borderRadius: 3,
+            top: mobile ? 0 : 70,
+            right: mobile ? 0 : 8,
+            height: mobile ? "100vh" : "calc(100vh - 78px)",
+            width: mobile ? "min(86vw, 300px)" : (drawerOpen ? drawerWidth : collapsedDrawerWidth),
+            borderRadius: mobile ? 0 : 3,
             overflow: "hidden",
+            zIndex: mobile ? 1400 : "auto",
             boxShadow: "0 12px 35px rgba(31,48,77,.12)",
             display: "flex",
             flexDirection: "column",
@@ -172,11 +198,11 @@ function DashboardLayout() {
               <ListItemButton
                 key={item.path}
                 selected={selected}
-                onClick={() => navigate(item.path)}
+                onClick={() => handleNavigate(item.path)}
                 sx={{ minHeight: 38, py: 0.25 }}
               >
-                <ListItemIcon sx={{ minWidth: drawerOpen ? 34 : "auto", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
-                {drawerOpen && <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />}
+                <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}>{item.icon}</ListItemIcon>
+                {(drawerOpen || mobile) && <ListItemText primary={item.title} sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.82rem" } }} />}
               </ListItemButton>
             );
           })}
@@ -187,13 +213,13 @@ function DashboardLayout() {
             onClick={handleLogout}
             sx={{ minHeight: 40, py: 0.25, color: "error.main", fontWeight: 700 }}
           >
-            <ListItemIcon sx={{ minWidth: drawerOpen ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
-            {drawerOpen && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />}
+            <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
+            {(drawerOpen || mobile) && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.84rem", fontWeight: 700 } }} />}
           </ListItemButton>
         </Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 1, mt: 8, mr: 0, transition: "margin .2s ease" }}>
+      <Box component="main" sx={{ flexGrow: 1, minWidth: 0, p: mobile ? 0.75 : 1, mt: mobile ? 7 : 8, mr: 0, transition: "margin .2s ease", overflowX: "hidden" }}>
         <Outlet />
       </Box>
     </Box>

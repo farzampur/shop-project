@@ -29,13 +29,14 @@ export type AppRouteKey =
   | "customers"
   | "cashbox"
   | "reports"
-  | "advancedReports"
+  | "financialReports"
   | "cashClose"
   | "audit"
   | "users"
   | "stores"
   | "transfers"
-  | "pricing";
+  | "pricing"
+  | "advancedReports";
 
 export const ROUTE_ROLES: Record<AppRouteKey, readonly StoreRole[]> = {
   dashboard: ALL_ROLES,
@@ -48,13 +49,14 @@ export const ROUTE_ROLES: Record<AppRouteKey, readonly StoreRole[]> = {
   customers: [ROLE.manager, ROLE.seller, ROLE.cashier],
   cashbox: [ROLE.manager, ROLE.cashier],
   reports: [ROLE.manager],
-  advancedReports: [ROLE.manager],
+  financialReports: [ROLE.manager, ROLE.cashier],
   cashClose: [ROLE.manager, ROLE.cashier],
   audit: [ROLE.manager],
   users: [ROLE.manager],
   stores: [ROLE.manager],
   transfers: [ROLE.manager, ROLE.warehouse],
   pricing: [ROLE.manager],
+  advancedReports: [ROLE.manager],
 };
 
 export function canAccessRoute(

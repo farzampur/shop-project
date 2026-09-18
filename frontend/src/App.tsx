@@ -1,33 +1,45 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense } from "react";
+import { Box, CircularProgress } from "@mui/material";
 
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+const Login = lazy(() => import("./pages/Login"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
 import ProtectedRoute from "./components/ProtectedRoute";
 import RoleRoute from "./components/RoleRoute";
 import { ROUTE_ROLES } from "./services/routePermissions";
 import DashboardLayout from "./layouts/DashboardLayout";
-import Products from "./pages/products/Products";
-import Inventory from "./pages/inventory/Inventory";
-import Categories from "./pages/categories/Categories";
+const Products = lazy(() => import("./pages/products/Products"));
+const Inventory = lazy(() => import("./pages/inventory/Inventory"));
+const Categories = lazy(() => import("./pages/categories/Categories"));
 import { StoreProvider } from "./contexts/StoreContext";
-import Purchases from "./pages/purchases/Purchases";
-import Suppliers from "./pages/suppliers/Suppliers";
-import Sales from "./pages/sales/Sales";
-import Reports from "./pages/Reports";
-import AdvancedReports from "./pages/AdvancedReports";
-import Customers from "./pages/customers/Customers";
-import Cashbox from "./pages/cashbox/Cashbox";
-import CashDayClose from "./pages/cashbox/CashDayClose";
-import AuditLogs from "./pages/audit/AuditLogs";
-import Users from "./pages/management/Users";
-import Stores from "./pages/management/Stores";
-import StockTransfers from "./pages/transfers/StockTransfers";
-import Pricing from "./pages/pricing/Pricing";
+const Purchases = lazy(() => import("./pages/purchases/Purchases"));
+const Suppliers = lazy(() => import("./pages/suppliers/Suppliers"));
+const Sales = lazy(() => import("./pages/sales/Sales"));
+const Reports = lazy(() => import("./pages/Reports"));
+const FinancialReports = lazy(() => import("./pages/FinancialReports"));
+const Customers = lazy(() => import("./pages/customers/Customers"));
+const Cashbox = lazy(() => import("./pages/cashbox/Cashbox"));
+const CashDayClose = lazy(() => import("./pages/cashbox/CashDayClose"));
+const AuditLogs = lazy(() => import("./pages/audit/AuditLogs"));
+const Users = lazy(() => import("./pages/management/Users"));
+const Stores = lazy(() => import("./pages/management/Stores"));
+const StockTransfers = lazy(() => import("./pages/transfers/StockTransfers"));
+const Pricing = lazy(() => import("./pages/pricing/Pricing"));
+const AdvancedReports = lazy(() => import("./pages/AdvancedReports"));
+
+function RouteFallback() {
+  return (
+    <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}>
+      <CircularProgress />
+    </Box>
+  );
+}
 
 function App() {
   return (
    <StoreProvider>
     <BrowserRouter>
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         {/* Login */}
         <Route path="/login" element={<Login />} />
@@ -126,22 +138,23 @@ function App() {
           <Route path="/stores" element={<RoleRoute allowedRoles={ROUTE_ROLES.stores}><Stores /></RoleRoute>} />
           <Route path="/transfers" element={<RoleRoute allowedRoles={ROUTE_ROLES.transfers}><StockTransfers /></RoleRoute>} />
           <Route path="/pricing" element={<RoleRoute allowedRoles={ROUTE_ROLES.pricing}><Pricing /></RoleRoute>} />
+          <Route path="/advanced-reports" element={<RoleRoute allowedRoles={ROUTE_ROLES.advancedReports}><AdvancedReports /></RoleRoute>} />
 
-
-          <Route
-            path="/advanced-reports"
-            element={
-              <RoleRoute allowedRoles={ROUTE_ROLES.advancedReports}>
-                <AdvancedReports />
-              </RoleRoute>
-            }
-          />
 
           <Route
             path="/reports"
             element={
               <RoleRoute allowedRoles={ROUTE_ROLES.reports}>
                 <Reports />
+              </RoleRoute>
+            }
+          />
+
+          <Route
+            path="/financial-reports"
+            element={
+              <RoleRoute allowedRoles={ROUTE_ROLES.financialReports}>
+                <FinancialReports />
               </RoleRoute>
             }
           />
@@ -159,6 +172,7 @@ function App() {
           element={<Navigate to="/dashboard" replace />}
         />
       </Routes>
+      </Suspense>
     </BrowserRouter>
    </StoreProvider>
 	
