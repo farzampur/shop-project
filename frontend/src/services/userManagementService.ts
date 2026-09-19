@@ -44,3 +44,8 @@ export async function updateManagedUser(id: number, payload: Partial<Pick<Manage
 export async function deleteManagedUser(id: number) {
   await api.delete(`/accounts/store-users/${id}/`);
 }
+
+export async function resetManagedUserPassword(id: number, password: string) {
+  const response = await api.post<{ detail: string }>(`/accounts/store-users/${id}/reset-password/`, { password });
+  return response.data;
+}

@@ -33,6 +33,7 @@ export default function Inventory() {
   const [history, setHistory] = useState<InventoryTransaction[]>([]);
   const [historyTitle, setHistoryTitle] = useState("");
   const [batchFilter, setBatchFilter] = useState<"active" | "empty">("active");
+  const [activeBatches, setActiveBatches] = useState<ProductBatch[]>([]);
 
   const load = async () => {
     if (!activeStore) return;
@@ -51,6 +52,10 @@ export default function Inventory() {
   };
 
   useEffect(() => { void load(); }, [activeStore?.id]);
+  useEffect(() => {
+    if (!activeStore) return;
+    void listProductBatches(activeStore.id, { remaining: "active" }).then(setActiveBatches).catch((e) => setError(err(e)));
+  }, [activeStore?.id]);
   useEffect(() => { if (tab === 1) void loadBatches(); }, [activeStore?.id, tab, batchFilter]);
 
   const saveMin = async () => {
@@ -75,6 +80,11 @@ export default function Inventory() {
 
   if (!activeStore) return <Alert severity="warning">ابتدا فروشگاه را انتخاب کنید.</Alert>;
   const low = items.filter((i) => Number(i.quantity) <= Number(i.min_quantity)).length;
+  const batchRemainingByProduct = useMemo(() => {
+    const result: Record<number, number> = {};
+    for (const batch of activeBatches) result[batch.product] = (result[batch.product] || 0) + Number(batch.remaining_quantity);
+    return result;
+  }, [activeBatches]);
 
   return (
     <Box dir="rtl" className="page-shell">
@@ -106,7 +116,7 @@ export default function Inventory() {
                     <Table size="small">
                       <TableHead><TableRow>
                         <TableCell>کالا</TableCell><TableCell>بارکد</TableCell><TableCell>موجودی</TableCell>
-                        <TableCell>حداقل</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell>
+                        <TableCell>حداقل</TableCell><TableCell>مانده بچ</TableCell><TableCell>وضعیت</TableCell><TableCell>عملیات</TableCell>
                       </TableRow></TableHead>
                       <TableBody>
                         {items.map((i) => {
@@ -115,6 +125,7 @@ export default function Inventory() {
                             <TableCell sx={{ fontWeight: 700 }}>{i.product_name}</TableCell>
                             <TableCell>{i.barcode || "-"}</TableCell><TableCell>{i.quantity}</TableCell>
                             <TableCell>{i.min_quantity}</TableCell>
+                            <TableCell>{(batchRemainingByProduct[i.product] ?? 0).toLocaleString("fa-IR", { maximumFractionDigits: 3 })}</TableCell>
                             <TableCell><Chip size="small" color={isLow ? "warning" : "success"} label={isLow ? "نیازمند تأمین" : "مناسب"} /></TableCell>
                             <TableCell>
                               <Button size="small" startIcon={<HistoryIcon />} onClick={() => void showHistory(i)}>گردش</Button>
@@ -122,7 +133,7 @@ export default function Inventory() {
                             </TableCell>
                           </TableRow>;
                         })}
-                        {!items.length && <TableRow><TableCell colSpan={6} align="center">موجودی‌ای ثبت نشده است.</TableCell></TableRow>}
+                        {!items.length && <TableRow><TableCell colSpan={7} align="center">موجودی‌ای ثبت نشده است.</TableCell></TableRow>}
                       </TableBody>
                     </Table>
                   </TableContainer>

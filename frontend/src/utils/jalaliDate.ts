@@ -57,3 +57,31 @@ export function shiftJalali(y:number,m:number,delta:number){
   let nm=m+delta, ny=y; while(nm<1){nm+=12;ny--;} while(nm>12){nm-=12;ny++;} return {y:ny,m:nm};
 }
 export function jalaliMonthFirstWeekday(y:number,m:number){const g=toGregorian(y,m,1);return new Date(g.gy,g.gm-1,g.gd).getDay();}
+
+export function formatJalaliDate(value?: string | Date | null){
+  if(!value) return "-";
+  const d=value instanceof Date ? value : new Date(value);
+  if(Number.isNaN(d.getTime())) return String(value);
+  const j=toJalali(d.getFullYear(),d.getMonth()+1,d.getDate());
+  return formatJalali(j.jy,j.jm,j.jd);
+}
+
+export function formatJalaliDateTime(value?: string | Date | null){
+  if(!value) return "-";
+  const d=value instanceof Date ? value : new Date(value);
+  if(Number.isNaN(d.getTime())) return String(value);
+  const j=toJalali(d.getFullYear(),d.getMonth()+1,d.getDate());
+  return `${formatJalali(j.jy,j.jm,j.jd)} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+export function jalaliDateToIsoDate(value:string){
+  const j=parseJalali(value); if(!j) return undefined;
+  const g=toGregorian(j.jy,j.jm,j.jd);
+  return `${g.gy}-${String(g.gm).padStart(2,"0")}-${String(g.gd).padStart(2,"0")}`;
+}
+
+export function currentMonthRangeJalali(){
+  const d=new Date();
+  const j=toJalali(d.getFullYear(),d.getMonth()+1,d.getDate());
+  return {start:formatJalali(j.jy,j.jm,1),end:formatJalali(j.jy,j.jm,j.jd)};
+}

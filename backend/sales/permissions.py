@@ -60,6 +60,24 @@ class CartPermission(BasePermission):
         if request.method == "POST":
             cart_id = getattr(view, "kwargs", {}).get("cart_pk")
 
+            # Detail actions such as cancelling an open cart use the top-level
+            # cart pk and must be authorized against the existing cart store.
+            detail_cart_id = getattr(view, "kwargs", {}).get("pk")
+            if detail_cart_id is not None:
+                cart = Cart.objects.filter(
+                    pk=detail_cart_id,
+                    user=request.user,
+                ).values("store_id").first()
+                if not cart:
+                    return False
+                return UserStore.objects.filter(
+                    user=request.user,
+                    store_id=cart["store_id"],
+                    is_active=True,
+                    store__is_active=True,
+                    role__in=self.ALLOWED_ROLES,
+                ).exists()
+
             if cart_id is not None:
                 return UserStore.objects.filter(
                     user=request.user,

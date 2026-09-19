@@ -1,6 +1,8 @@
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 
 from .models import UserStore
@@ -46,6 +48,29 @@ class UserStoreViewSet(viewsets.ModelViewSet):
         obj = serializer.save()
         audit(user=request.user, action="update", model_name="UserStore", object_id=obj.id, description=f"ویرایش دسترسی {obj.user.username} در {obj.store.name}", store=obj.store, metadata={"role_before": old_role, "role_after": obj.role, "active_before": old_active, "active_after": obj.is_active})
         return Response(self.get_serializer(obj).data)
+
+    @action(detail=True, methods=["post"], url_path="reset-password")
+    def reset_password(self, request, pk=None):
+        instance = self.get_object()
+        if instance.user_id == request.user.id:
+            return Response({"detail": "برای تغییر رمز عبور خودتان از بخش تغییر رمز استفاده کنید."}, status=status.HTTP_400_BAD_REQUEST)
+
+        password = str(request.data.get("password", ""))
+        if len(password) < 6:
+            raise ValidationError({"password": "رمز عبور باید حداقل ۶ کاراکتر باشد."})
+
+        instance.user.set_password(password)
+        instance.user.save(update_fields=["password"])
+        audit(
+            user=request.user,
+            action="update",
+            model_name="User",
+            object_id=instance.user_id,
+            description=f"ریست رمز عبور کاربر {instance.user.username} در {instance.store.name}",
+            store=instance.store,
+            metadata={"operation": "admin_reset_password", "username": instance.user.username},
+        )
+        return Response({"detail": "رمز عبور کاربر با موفقیت ریست شد."})
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

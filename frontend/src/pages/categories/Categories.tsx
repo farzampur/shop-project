@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import CategoryForm from "./CategoryForm";
+import { formatJalaliDateTime } from "../../utils/jalaliDate";
 import { useStore } from "../../contexts/StoreContext";
 import { deleteCategory, listCategories } from "../../services/categoryService";
 
@@ -304,8 +305,7 @@ function Categories() {
 
 
                     <TableCell>
-                      {category.created_at ||
-                        "-"}
+                      {formatJalaliDateTime(category.created_at)}
                     </TableCell>
 
 

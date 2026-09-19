@@ -9,7 +9,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { useStore } from "../../contexts/StoreContext";
-import { createManagedUser, deleteManagedUser, listManagedUsers, updateManagedUser, type ManagedUser } from "../../services/userManagementService";
+import { createManagedUser, deleteManagedUser, listManagedUsers, resetManagedUserPassword, updateManagedUser, type ManagedUser } from "../../services/userManagementService";
 import type { StoreRole } from "../../services/authTypes";
 
 const roles: { value: StoreRole; label: string }[] = [
@@ -28,6 +28,8 @@ export default function Users() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ManagedUser | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resetUser, setResetUser] = useState<ManagedUser | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
   const [form, setForm] = useState({ username: "", password: "", first_name: "", last_name: "", email: "", role: "seller" as StoreRole });
 
   const canManage = activeRole === "manager" || user?.is_superuser;
@@ -53,6 +55,14 @@ export default function Users() {
     if (item.user === user?.id) return;
     try { await updateManagedUser(item.id, { is_active: !item.is_active }); await load(); } catch (e) { setError(errorMessage(e)); }
   };
+  const resetPasswordForUser = async () => {
+    if (!resetUser || resetPassword.length < 6) return;
+    setSaving(true); setError("");
+    try {
+      await resetManagedUserPassword(resetUser.id, resetPassword);
+      setResetUser(null); setResetPassword("");
+    } catch (e) { setError(errorMessage(e)); } finally { setSaving(false); }
+  };
   const remove = async (item: ManagedUser) => {
     if (item.user === user?.id || !window.confirm(`دسترسی «${item.username}» از این شعبه حذف شود؟`)) return;
     try { await deleteManagedUser(item.id); await load(); } catch (e) { setError(errorMessage(e)); }
@@ -67,9 +77,18 @@ export default function Users() {
     </Stack>
     {error && <Alert sx={{ mb: 2 }} severity="error" onClose={() => setError("")}>{error}</Alert>}
     <Card><CardContent>{loading ? <Box sx={{ minHeight: 240, display: "grid", placeItems: "center" }}><CircularProgress /></Box> : <TableContainer><Table><TableHead><TableRow><TableCell>کاربر</TableCell><TableCell>ایمیل</TableCell><TableCell>نقش</TableCell><TableCell>وضعیت</TableCell><TableCell align="center">عملیات</TableCell></TableRow></TableHead><TableBody>
-      {items.map(item => <TableRow key={item.id} hover><TableCell><Typography sx={{ fontWeight: 600 }}>{item.first_name || item.last_name ? `${item.first_name} ${item.last_name}`.trim() : item.username}</Typography><Typography variant="caption" color="text.secondary">@{item.username}</Typography></TableCell><TableCell>{item.email || "-"}</TableCell><TableCell><Chip size="small" label={item.role_display} /></TableCell><TableCell><Chip size="small" color={item.is_active ? "success" : "default"} label={item.is_active ? "فعال" : "غیرفعال"} /></TableCell><TableCell align="center"><IconButton title="ویرایش نقش" onClick={() => openEdit(item)}><EditIcon /></IconButton>{item.user !== user?.id && <IconButton title={item.is_active ? "غیرفعال کردن" : "فعال کردن"} onClick={() => void toggle(item)}><Chip size="small" label={item.is_active ? "غیرفعال" : "فعال"} /></IconButton>}{item.user !== user?.id && <IconButton color="error" title="حذف دسترسی شعبه" onClick={() => void remove(item)}><DeleteIcon /></IconButton>}</TableCell></TableRow>)}
+      {items.map(item => <TableRow key={item.id} hover><TableCell><Typography sx={{ fontWeight: 600 }}>{item.first_name || item.last_name ? `${item.first_name} ${item.last_name}`.trim() : item.username}</Typography><Typography variant="caption" color="text.secondary">@{item.username}</Typography></TableCell><TableCell>{item.email || "-"}</TableCell><TableCell><Chip size="small" label={item.role_display} /></TableCell><TableCell><Chip size="small" color={item.is_active ? "success" : "default"} label={item.is_active ? "فعال" : "غیرفعال"} /></TableCell><TableCell align="center"><IconButton title="ویرایش نقش" onClick={() => openEdit(item)}><EditIcon /></IconButton>{item.user !== user?.id && <Button size="small" onClick={() => { setResetUser(item); setResetPassword(""); }}>ریست رمز</Button>}{item.user !== user?.id && <IconButton title={item.is_active ? "غیرفعال کردن" : "فعال کردن"} onClick={() => void toggle(item)}><Chip size="small" label={item.is_active ? "غیرفعال" : "فعال"} /></IconButton>}{item.user !== user?.id && <IconButton color="error" title="حذف دسترسی شعبه" onClick={() => void remove(item)}><DeleteIcon /></IconButton>}</TableCell></TableRow>)}
       {!items.length && <TableRow><TableCell colSpan={5} align="center">کاربری برای این شعبه ثبت نشده است.</TableCell></TableRow>}
     </TableBody></Table></TableContainer>}</CardContent></Card>
+
+    <Dialog open={!!resetUser} onClose={() => { setResetUser(null); setResetPassword(""); }} fullWidth maxWidth="xs">
+      <DialogTitle>ریست رمز عبور {resetUser?.username}</DialogTitle>
+      <DialogContent><Stack spacing={2} sx={{ mt: 1 }}>
+        <Alert severity="warning">این عملیات رمز عبور فعلی کاربر را جایگزین می‌کند.</Alert>
+        <TextField label="رمز عبور جدید" type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} required helperText="حداقل ۶ کاراکتر" autoFocus />
+      </Stack></DialogContent>
+      <DialogActions><Button onClick={() => { setResetUser(null); setResetPassword(""); }}>انصراف</Button><Button variant="contained" onClick={() => void resetPasswordForUser()} disabled={saving || resetPassword.length < 6}>{saving ? "در حال ثبت..." : "ثبت رمز جدید"}</Button></DialogActions>
+    </Dialog>
 
     <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{title}</DialogTitle><DialogContent><Stack spacing={2} sx={{ mt: 1 }}>
       {!editing && <><TextField label="نام کاربری" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} required /><TextField label="رمز عبور" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required helperText="حداقل ۶ کاراکتر" /><TextField label="نام" value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} /><TextField label="نام خانوادگی" value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} /><TextField label="ایمیل" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></>}

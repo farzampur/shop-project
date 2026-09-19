@@ -5,6 +5,7 @@ import {
   TableContainer, TableHead, TableRow, TextField, Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import { formatJalaliDateTime } from "../../utils/jalaliDate";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import HistoryIcon from "@mui/icons-material/History";
@@ -229,7 +230,7 @@ export default function Suppliers() {
       <Dialog open={!!ledgerTitle} onClose={() => setLedgerTitle("")} fullWidth maxWidth="md">
         <DialogTitle>گردش حساب {ledgerTitle}</DialogTitle>
         <DialogContent><Table size="small"><TableHead><TableRow><TableCell>نوع</TableCell><TableCell>مبلغ</TableCell><TableCell>شرح</TableCell><TableCell>تاریخ</TableCell></TableRow></TableHead>
-          <TableBody>{ledger.map((t) => <TableRow key={t.id}><TableCell><Chip label={t.transaction_type === "purchase" ? "خرید" : t.transaction_type === "payment" ? "پرداخت" : "برگشت"} /></TableCell><TableCell>{money(t.amount)}</TableCell><TableCell>{t.description || "-"}</TableCell><TableCell>{t.created_at}</TableCell></TableRow>)}</TableBody>
+          <TableBody>{ledger.map((t) => <TableRow key={t.id}><TableCell><Chip label={t.transaction_type === "purchase" ? "خرید" : t.transaction_type === "payment" ? "پرداخت" : "برگشت"} /></TableCell><TableCell>{money(t.amount)}</TableCell><TableCell>{t.description || "-"}</TableCell><TableCell>{formatJalaliDateTime(t.created_at)}</TableCell></TableRow>)}</TableBody>
         </Table></DialogContent>
       </Dialog>
 

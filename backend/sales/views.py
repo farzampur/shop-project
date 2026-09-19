@@ -82,6 +82,21 @@ class CartViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by("-updated_at", "-id")
 
+    @action(detail=True, methods=["post"], url_path="cancel-open")
+    def cancel_open(self, request, pk=None):
+        cart = self.get_object()
+        cart_id = cart.id
+        cart.delete()
+        audit(
+            user=request.user,
+            action="cancel_open_cart",
+            model_name="Cart",
+            object_id=cart_id,
+            store=cart.store,
+            description=f"لغو فروش باز شماره {cart_id}",
+        )
+        return Response({"id": cart_id, "status": "cancelled"}, status=status.HTTP_200_OK)
+
     def perform_create(self, serializer):
 
         store_id = self.request.data.get("store")

@@ -13,6 +13,7 @@ export interface CheckoutPayment { method:PaymentMethod; amount:string; cashbox_
 function unwrap<T>(data: ApiListResponse<T>): T[] { return Array.isArray(data) ? data : data.results; }
 export async function listCarts(storeId:number):Promise<Cart[]> { const r=await api.get<ApiListResponse<Cart>>("/sales/carts/",{params:{store:storeId}}); return unwrap(r.data); }
 export async function createCart(storeId:number, customer?:number|null):Promise<Cart> { const r=await api.post<Cart>("/sales/carts/",{store:storeId,...(customer ? {customer}: {})}); return r.data; }
+export async function cancelOpenCart(cartId:number):Promise<void>{await api.post(`/sales/carts/${cartId}/cancel-open/`);}
 export async function updateCartCustomer(cartId:number, customer:number|null):Promise<Cart> { const r=await api.patch<Cart>(`/sales/carts/${cartId}/`,{customer}); return r.data; }
 export async function addCartItem(cartId:number,data:{product?:number;barcode?:string;quantity:string|number;discount_percent:string|number;price_type?:"retail"|"wholesale"|"special"}):Promise<CartItem>{const r=await api.post<CartItem>(`/sales/carts/${cartId}/items/`,data);return r.data;}
 export async function updateCartItem(cartId:number,itemId:number,data:{quantity:string|number;discount_percent:string|number}):Promise<CartItem>{const r=await api.patch<CartItem>(`/sales/carts/${cartId}/items/${itemId}/`,data);return r.data;}

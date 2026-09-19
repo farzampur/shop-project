@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PurchaseForm from "./PurchaseForm";
+import { formatJalaliDateTime } from "../../utils/jalaliDate";
 
 import {
   Alert,
@@ -397,7 +398,7 @@ function Purchases() {
                       </TableCell>
 
                       <TableCell>
-                        {purchase.created_at}
+                        {formatJalaliDateTime(purchase.created_at)}
                       </TableCell>
 
 					  <TableCell>
@@ -525,7 +526,7 @@ function Purchases() {
 
                   <Typography sx={{ mb: 1 }}>
                     تاریخ:{" "}
-                    {selectedPurchase.created_at}
+                    {formatJalaliDateTime(selectedPurchase.created_at)}
                   </Typography>
 
                   <Typography sx={{ mb: 2 }}>
