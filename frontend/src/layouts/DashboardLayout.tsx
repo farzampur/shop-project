@@ -102,8 +102,9 @@ function DashboardLayout() {
   }, []);
 
   const handleLogout = async () => {
+    // درخواست blacklist فرصت تکمیل شدن دارد؛ در صورت مشکل شبکه، حداکثر ۳ ثانیه صبر می‌کنیم.
     await logout();
-    navigate("/login", { replace: true });
+    window.location.replace("/login");
   };
 
   const handleStoreChange = (event: SelectChangeEvent<number>) => {

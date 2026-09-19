@@ -93,16 +93,23 @@ export function saveTokens(tokens: LoginResponse) {
   tokenService.saveAccessToken(tokens.access);
 }
 
-export async function logout() {
-  try {
-    await ensureCsrfCookie();
+export async function logout(): Promise<void> {
+  // Access token را فوراً محلی پاک می‌کنیم، اما قبل از بستن صفحه اجازه می‌دهیم
+  // درخواست blacklist فرصت کامل شدن داشته باشد تا مرورگر اتصال Django را قطع نکند.
+  tokenService.clearTokens();
+  window.dispatchEvent(new Event("auth-change"));
 
-    await authApi.post(
-      "/auth/token/blacklist/",
-      {}
-    );
-  } finally {
-    tokenService.clearTokens();
-    window.dispatchEvent(new Event("auth-change"));
+  try {
+    csrfReady = false;
+    await Promise.race([
+      (async () => {
+        await ensureCsrfCookie();
+        await authApi.post("/auth/token/blacklist/", {});
+      })(),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 3000)),
+    ]);
+  } catch (error) {
+    // خروج محلی انجام شده؛ خطای blacklist نباید مانع خروج شود.
+    console.warn("LOGOUT BLACKLIST FAILED:", error);
   }
 }
