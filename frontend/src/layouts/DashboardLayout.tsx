@@ -161,7 +161,24 @@ function DashboardLayout() {
             <Typography variant="caption">
               {activeRole ? roleLabels[activeRole] : "بدون نقش"}
             </Typography>
-          </Box>}
+          </Box>}\n          {mobile && (
+            <ListItemButton
+              onClick={handleLogout}
+              sx={{
+                minWidth: 44,
+                width: 44,
+                height: 40,
+                p: 0,
+                ml: 0.25,
+                justifyContent: "center",
+                borderRadius: 2,
+                color: "error.main",
+              }}
+              aria-label="خروج"
+            >
+              <LogoutIcon />
+            </ListItemButton>
+          )}
         </Toolbar>
       </AppBar>
 
@@ -204,13 +221,13 @@ function DashboardLayout() {
           })}
         </List>
 
-        <Box sx={{ borderTop: "1px solid #e8edf5", p: 0.75, backgroundColor: "rgba(255,255,255,.96)" }}>
+        <Box sx={{ display: mobile ? "none" : "block", borderTop: "1px solid #e8edf5", p: 0.75, backgroundColor: "rgba(255,255,255,.96)" }}>
           <ListItemButton
             onClick={handleLogout}
             sx={{ minHeight: 36, py: 0.15, color: "error.main", fontWeight: 700 }}
           >
             <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
-            {(drawerOpen || mobile) && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.8rem", fontWeight: 700 } }} />}
+            {drawerOpen && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.8rem", fontWeight: 700 } }} />}
           </ListItemButton>
         </Box>
       </Drawer>
