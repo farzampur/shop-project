@@ -2,20 +2,8 @@ import { useEffect,useRef,useState } from "react";
 import { Alert,Autocomplete,Box,Button,Card,CardContent,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete"; import CancelIcon from "@mui/icons-material/Cancel"; import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart"; import PaymentIcon from "@mui/icons-material/Payment"; import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import { useStore } from "../../contexts/StoreContext"; import { formatJalaliDateTime } from "../../utils/jalaliDate"; import { listProducts,type Product } from "../../services/productService"; import { listPrices,type ProductPrice,type PriceType } from "../../services/pricingService"; import { listCustomers,getCustomerBalance,type Customer,type CustomerBalance } from "../../services/customerService"; import { listCashBoxes,type CashBox } from "../../services/cashboxService"; import { addCartItem,checkout,createCart,cancelOpenCart,deleteCartItem,listCarts,listOrders,updateCartCustomer,changeOrderStatus,payOrder,downloadInvoicePdf,downloadThermalReceiptPdf,type Cart,type CheckoutPayment,type Order,type PaymentMethod } from "../../services/salesService";
+import { getApiErrorMessage as apiErrorMessage } from "../../utils/apiError";
 const money=(v:string|number)=>Number(v||0).toLocaleString("fa-IR");
-const apiErrorMessage=(e:any)=>{
- const data=e?.response?.data;
- if(typeof data?.detail==="string") return data.detail;
- if(typeof data?.message==="string") return data.message;
- if(typeof data==="string") return data;
- if(data&&typeof data==="object"){
-  for(const value of Object.values(data)){
-   if(typeof value==="string") return value;
-   if(Array.isArray(value)&&typeof value[0]==="string") return value[0];
-  }
- }
- return "عملیات انجام نشد.";
-};
 export default function Sales(){
  const {activeStore,activeRole}=useStore();
  const [saleCarts,setSaleCarts]=useState<Cart[]>([]);
@@ -30,9 +18,9 @@ export default function Sales(){
   const [p,pr,c,b,o,carts]=results;
   const failures=results.filter(x=>x.status==="rejected") as PromiseRejectedResult[];
   if(failures.length){
-    const first=failures[0].reason as any;
-    const detail=first?.response?.data?.detail || first?.response?.data?.message;
-    throw new Error(detail || `دریافت اطلاعات فروشگاه با ${failures.length} خطا مواجه شد.`);
+    const first=failures[0].reason;
+    const detail=apiErrorMessage(first, `دریافت اطلاعات فروشگاه با ${failures.length} خطا مواجه شد.`);
+    throw new Error(detail);
   }
   const productsData=(p as PromiseFulfilledResult<Product[]>).value;
   const pricesData=(pr as PromiseFulfilledResult<ProductPrice[]>).value;
@@ -47,7 +35,7 @@ export default function Sales(){
   refreshRequestRef.current+=1;
   const storeId=activeStore.id;
   setLoading(true);setError("");setCart(null);setPayments([]);setCashAmount("");setCashAmountEdited(false);setCashReceived("");setCashReceivedEdited(false);setCardAmount("");setCreditAmount("");setCustomerId(null);setCustomerBalance(null);setPaymentsByCart({});setSaleCarts([]);setActiveCartId(null);setProduct(null);setBarcode("");
-  void refresh(storeId).catch(e=>{console.error(e);setError(e?.message || "خطا در دریافت اطلاعات فروشگاه");}).finally(()=>{if(storeId===activeStore.id)setLoading(false);});
+  void refresh(storeId).catch(e=>{console.error(e);setError(apiErrorMessage(e, "خطا در دریافت اطلاعات فروشگاه"));}).finally(()=>{if(storeId===activeStore.id)setLoading(false);});
  },[activeStore?.id,activeRole]);
  const total=Number(cart?.total_price||0),paid=payments.reduce((s,p)=>s+Number(p.amount||0),0),remaining=total-paid,selectedCustomer=customers.find(c=>c.id===customerId)||null;
  const selectedPrices=product?(activePrices[product.id]||[]):[]; const retailActive=selectedPrices.find(x=>x.price_type==="retail"); const priceChoices=[{type:"retail" as PriceType,amount:retailActive?.amount||product?.effective_sale_price||product?.sale_price||"0",label:retailActive?.price_type_display||"قیمت پایه"},...selectedPrices.filter(x=>x.price_type!=="retail").map(x=>({type:x.price_type,amount:x.amount,label:x.price_type_display}))];

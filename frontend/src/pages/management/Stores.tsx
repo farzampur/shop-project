@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiErrorMessage as errorMessage } from "../../utils/apiError";
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/AddBusiness";
 import EditIcon from "@mui/icons-material/Edit";
@@ -7,7 +8,6 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import { useStore } from "../../contexts/StoreContext";
 import { createStore, deleteStore, listStores, updateStore, type ManagedStore } from "../../services/storeManagementService";
 
-const errorMessage = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || "عملیات انجام نشد.";
 
 export default function Stores() {
   const { user, activeStore, setActiveStore } = useStore();

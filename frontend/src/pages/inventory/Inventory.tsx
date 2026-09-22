@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getApiErrorMessage as err } from "../../utils/apiError";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog,
   DialogActions, DialogContent, DialogTitle, Stack, Table, TableBody,
@@ -15,7 +16,6 @@ import {
 } from "../../services/inventoryService";
 import { listProductBatches, type ProductBatch } from "../../services/batchService";
 
-const err = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || "عملیات انجام نشد.";
 const money = (value: string) => Number(value).toLocaleString("fa-IR");
 
 export default function Inventory() {

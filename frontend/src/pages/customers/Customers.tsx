@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getApiErrorMessage as errorMessage } from "../../utils/apiError";
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, Table, TextField, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
@@ -14,7 +15,6 @@ import { listCashBoxes, type CashBox } from "../../services/cashboxService";
 import CustomerForm, { type CustomerFormState } from "./CustomerForm";
 
 const money = (v: string | number) => Number(v || 0).toLocaleString("fa-IR");
-const errorMessage = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || (typeof e?.response?.data === "string" ? e.response.data : "عملیات انجام نشد.");
 
 const emptyForm: CustomerFormState = { first_name: "", last_name: "", mobile: "", address: "" };
 

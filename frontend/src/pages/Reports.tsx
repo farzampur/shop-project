@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getApiErrorMessage as errorMessage } from "../utils/apiError";
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, InputLabel, MenuItem, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
@@ -12,7 +13,6 @@ import { cashReconciliation, cancellationsReport, dailySales, financialReport, m
 
 const money = (v: string | number) => Number(v || 0).toLocaleString("fa-IR");
 const compactMoney = (v: string | number) => Number(v || 0).toLocaleString("fa-IR", { notation: "compact", maximumFractionDigits: 1 });
-const errorMessage = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || (typeof e?.response?.data === "string" ? e.response.data : "دریافت گزارش‌ها انجام نشد.");
 
 function Kpi({ title, value, icon, caption }: { title: string; value: string; icon: React.ReactNode; caption?: string }) {
   return <Card sx={{ flex: 1, minWidth: 190 }}><CardContent><Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "flex-start" }}><Box><Typography variant="body2" color="text.secondary">{title}</Typography><Typography variant="h5" sx={{ fontWeight: 800,  mt: 1 }}>{value}</Typography>{caption && <Typography variant="caption" color="text.secondary">{caption}</Typography>}</Box><Box sx={{ p: 1.1, borderRadius: 2, bgcolor: "action.hover" }}>{icon}</Box></Stack></CardContent></Card>;

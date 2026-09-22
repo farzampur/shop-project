@@ -10,6 +10,7 @@ import {
 
 import { createCategory } from "../../services/categoryService";
 import { useStore } from "../../contexts/StoreContext";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 interface CategoryFormProps {
   onSuccess: () => void;
@@ -69,14 +70,7 @@ function CategoryForm({
         "CREATE CATEGORY DATA:",
         error.response?.data
       );
-
-      setError(
-        error.response?.data
-          ? JSON.stringify(
-              error.response.data
-            )
-          : "خطا در ثبت دسته‌بندی."
-      );
+      setError(getApiErrorMessage(error, "خطا در ثبت دسته‌بندی."));
 
     } finally {
       setLoading(false);

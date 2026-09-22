@@ -1,10 +1,10 @@
 import { useEffect,useMemo,useState } from "react";
+import { getApiErrorMessage as err } from "../../utils/apiError";
 import { Alert,Box,Button,Card,CardContent,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Select,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography,Chip } from "@mui/material";
 import { useStore } from "../../contexts/StoreContext";
 import { listInventory } from "../../services/inventoryService";
 import { approveTransfer,cancelTransfer,createTransfer,listTransfers,receiveTransfer,shipTransfer,type StockTransfer } from "../../services/transferService";
 import type { InventoryItem } from "../../services/inventoryService";
-const err=(e:any)=>e?.response?.data?.detail||e?.response?.data?.items||e?.response?.data?.message||"عملیات انجام نشد.";
 const statusColor=(s:string)=>s==="received"?"success":s==="cancelled"?"error":s==="shipped"?"info":s==="approved"?"warning":"default";
 export default function StockTransfers(){
  const {stores,activeStore,activeRole}=useStore(); const [rows,setRows]=useState<StockTransfer[]>([]); const [inventory,setInventory]=useState<InventoryItem[]>([]); const [loading,setLoading]=useState(false); const [error,setError]=useState(""); const [open,setOpen]=useState(false); const [destination,setDestination]=useState(""); const [product,setProduct]=useState(""); const [qty,setQty]=useState(""); const [notes,setNotes]=useState("");

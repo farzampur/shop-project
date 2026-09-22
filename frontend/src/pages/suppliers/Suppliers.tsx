@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiErrorMessage as err } from "../../utils/apiError";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Stack, Table, TableBody, TableCell,
@@ -19,7 +20,6 @@ import {
 } from "../../services/supplierService";
 
 const money = (v: string | number | null | undefined) => Number(v || 0).toLocaleString("fa-IR");
-const err = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || "عملیات انجام نشد.";
 
 export default function Suppliers() {
   const { activeStore, activeRole } = useStore();

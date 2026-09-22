@@ -152,33 +152,35 @@ function DashboardLayout() {
           </FormControl>
 
           <Box sx={{ flexGrow: 1 }} />
-          {drawerOpen && <Box sx={{ textAlign: "right" }}>
-            <Typography variant="body2">
-              {user?.first_name || user?.last_name
-                ? `${user.first_name} ${user.last_name}`.trim()
-                : user?.username}
-            </Typography>
-            <Typography variant="caption">
-              {activeRole ? roleLabels[activeRole] : "بدون نقش"}
-            </Typography>
-          </Box>}\n          {mobile && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, maxWidth: mobile ? "58%" : "none" }}>
+            <Box sx={{ textAlign: "right", minWidth: 0 }}>
+              <Typography variant="body2" noWrap>
+                {user?.first_name || user?.last_name
+                  ? `${user.first_name} ${user.last_name}`.trim()
+                  : user?.username}
+              </Typography>
+              <Typography variant="caption" noWrap>
+                {activeRole ? roleLabels[activeRole] : "بدون نقش"}
+              </Typography>
+            </Box>
             <ListItemButton
               onClick={handleLogout}
               sx={{
-                minWidth: 44,
-                width: 44,
+                minWidth: 40,
+                width: 40,
                 height: 40,
                 p: 0,
-                ml: 0.25,
+                flexShrink: 0,
                 justifyContent: "center",
                 borderRadius: 2,
                 color: "error.main",
               }}
               aria-label="خروج"
+              title="خروج"
             >
-              <LogoutIcon />
+              <LogoutIcon fontSize="small" />
             </ListItemButton>
-          )}
+          </Box>
         </Toolbar>
       </AppBar>
 
@@ -221,15 +223,6 @@ function DashboardLayout() {
           })}
         </List>
 
-        <Box sx={{ display: mobile ? "none" : "block", borderTop: "1px solid #e8edf5", p: 0.75, backgroundColor: "rgba(255,255,255,.96)" }}>
-          <ListItemButton
-            onClick={handleLogout}
-            sx={{ minHeight: 36, py: 0.15, color: "error.main", fontWeight: 700 }}
-          >
-            <ListItemIcon sx={{ minWidth: (drawerOpen || mobile) ? 34 : "auto", color: "inherit", justifyContent: "center", "& .MuiSvgIcon-root": { fontSize: 20 } }}><LogoutIcon /></ListItemIcon>
-            {drawerOpen && <ListItemText primary="خروج" sx={{ textAlign: "right", "& .MuiListItemText-primary": { fontSize: "0.8rem", fontWeight: 700 } }} />}
-          </ListItemButton>
-        </Box>
       </Drawer>
 
       <Box component="main" sx={{ flexGrow: 1, minWidth: 0, p: mobile ? 0.5 : 0.75, mt: mobile ? 6.5 : 7.5, mr: 0, transition: "margin .2s ease", overflowX: "hidden" }}>

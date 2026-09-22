@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getApiErrorMessage as errorMessage } from "../../utils/apiError";
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Stack, Table, TableBody, TableCell,
@@ -18,7 +19,6 @@ const roles: { value: StoreRole; label: string }[] = [
   { value: "cashier", label: "صندوقدار" },
   { value: "warehouse", label: "انباردار" },
 ];
-const errorMessage = (e: any) => e?.response?.data?.detail || e?.response?.data?.message || "عملیات انجام نشد.";
 
 export default function Users() {
   const { activeStore, activeRole, user } = useStore();

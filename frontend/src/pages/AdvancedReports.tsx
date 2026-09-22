@@ -31,12 +31,161 @@ function normalizeRows(data: unknown): Record<string, unknown>[] {
 
 function label(key: string) {
   const labels: Record<string, string> = {
-    id: "شناسه", product_name: "کالا", store_name: "فروشگاه", quantity: "مقدار", min_quantity: "حداقل",
-    inventory_value: "ارزش موجودی", purchase_price: "قیمت خرید", sale_price: "قیمت فروش", total: "جمع",
-    amount: "مبلغ", balance: "مانده", total_sales: "فروش", total_cost: "هزینه", total_profit: "سود",
-    supplier_name: "تأمین‌کننده", customer_name: "مشتری", created_at: "تاریخ", transaction_type: "نوع تراکنش",
+    id: "شناسه",
+    product_id: "شناسه کالا",
+    product_name: "کالا",
+    store_id: "شناسه فروشگاه",
+    store_name: "فروشگاه",
+    supplier_id: "شناسه تأمین‌کننده",
+    supplier_name: "تأمین‌کننده",
+    customer_id: "شناسه مشتری",
+    customer_name: "مشتری",
+    cashbox_id: "شناسه صندوق",
+    cashbox_name: "صندوق",
+    inventory_id: "شناسه موجودی",
+    batch_id: "شناسه بچ",
+    quantity: "مقدار",
+    remaining_quantity: "مانده مقدار",
+    min_quantity: "حداقل موجودی",
+    max_quantity: "حداکثر موجودی",
+    inventory_quantity: "موجودی",
+    inventory_value: "ارزش موجودی",
+    potential_profit: "سود بالقوه",
+    total_potential_profit: "سود بالقوه کل",
+    purchase_price: "قیمت خرید",
+    sale_price: "قیمت فروش",
+    average_purchase_price: "میانگین قیمت خرید",
+    total: "جمع",
+    count: "تعداد",
+    amount: "مبلغ",
+    total_amount: "مبلغ کل",
+    balance: "مانده",
+    status: "وضعیت",
+    total_sales: "مجموع فروش",
+    total_sale: "مجموع فروش",
+    sales_amount: "مبلغ فروش",
+    total_cost: "مجموع هزینه",
+    total_profit: "مجموع سود",
+    profit: "سود",
+    gross_profit: "سود ناخالص",
+    net_profit: "سود خالص",
+    discount: "تخفیف",
+    discount_amount: "مبلغ تخفیف",
+    total_discount: "مجموع تخفیف",
+    total_discount_amount: "مجموع مبلغ تخفیف",
+    purchase_count: "تعداد خرید",
+    total_purchase: "مجموع خرید",
+    average_purchase: "میانگین خرید",
+    last_purchase: "آخرین خرید",
+    last_purchase_date: "تاریخ آخرین خرید",
+    first_purchase: "اولین خرید",
+    first_purchase_date: "تاریخ اولین خرید",
+    payment_count: "تعداد پرداخت",
+    total_payment: "مجموع پرداخت",
+    payment_total: "مجموع پرداخت",
+    payments: "پرداخت‌ها",
+    payment_amount: "مبلغ پرداخت",
+    average_payment: "میانگین پرداخت",
+    last_payment: "آخرین پرداخت",
+    last_payment_date: "تاریخ آخرین پرداخت",
+    return_count: "تعداد برگشت",
+    total_return: "مجموع برگشت",
+    returns: "برگشت‌ها",
+    adjustment_count: "تعداد تعدیلات",
+    adjustment: "تعدیل",
+    adjustments: "تعدیلات",
+    adjustment_total: "مجموع تعدیلات",
+    transaction_count: "تعداد تراکنش",
+    transaction_type: "نوع تراکنش",
+    transaction: "تراکنش",
+    payment_method: "روش پرداخت",
+    payment_methods: "روش‌های پرداخت",
+    method: "روش",
+    receipts: "دریافت‌ها",
+    receipt_count: "تعداد دریافت",
+    receipt_total: "مجموع دریافت",
+    expenses: "هزینه‌ها",
+    expense_amount: "مبلغ هزینه",
+    expense_count: "تعداد هزینه",
+    purchase_returns: "برگشت خرید",
+    sale_returns: "برگشت فروش",
+    order_count: "تعداد سفارش",
+    sales_count: "تعداد فروش",
+    customer_count: "تعداد مشتری",
+    supplier_count: "تعداد تأمین‌کننده",
+    debtor_count: "تعداد بدهکار",
+    creditor_count: "تعداد بستانکار",
+    debt: "بدهی",
+    credit: "بستانکاری",
+    payable: "بدهی قابل پرداخت",
+    receivable: "مطالبات قابل دریافت",
+    total_debt: "مجموع بدهی",
+    total_credit: "مجموع بستانکاری",
+    total_receivable: "مجموع مطالبات",
+    total_payable: "مجموع بدهی قابل پرداخت",
+    cash_balance: "مانده نقدی",
+    cashbox_balance: "مانده صندوق",
+    opening_balance: "موجودی ابتدای دوره",
+    closing_balance: "موجودی پایان دوره",
+    debit: "بدهکار",
+    credit_amount: "مبلغ بستانکاری",
+    description: "توضیحات",
+    invoice_number: "شماره فاکتور",
+    order_id: "شناسه سفارش",
+    purchase_id: "شناسه خرید",
+    payment_id: "شناسه پرداخت",
+    reference_id: "شناسه مرجع",
+    created_at: "تاریخ ایجاد",
+    updated_at: "تاریخ آخرین تغییر",
+    date: "تاریخ",
+    day: "روز",
+    month: "ماه",
+    year: "سال",
+    start_date: "از تاریخ",
+    end_date: "تا تاریخ",
+    filters: "فیلترها",
   };
-  return labels[key] || key.replaceAll("_", " ");
+  if (labels[key]) return labels[key];
+
+  const words: Record<string, string> = {
+    id: "شناسه", product: "کالا", store: "فروشگاه", supplier: "تأمین‌کننده", customer: "مشتری",
+    cashbox: "صندوق", inventory: "موجودی", batch: "بچ", quantity: "مقدار", remaining: "مانده",
+    min: "حداقل", max: "حداکثر", total: "مجموع", average: "میانگین", purchase: "خرید",
+    purchases: "خریدها", sale: "فروش", sales: "فروش‌ها", payment: "پرداخت", payments: "پرداخت‌ها",
+    return: "برگشت", returns: "برگشت‌ها", adjustment: "تعدیل", adjustments: "تعدیلات",
+    transaction: "تراکنش", transactions: "تراکنش‌ها", amount: "مبلغ", value: "ارزش", price: "قیمت",
+    cost: "هزینه", profit: "سود", potential: "بالقوه", discount: "تخفیف", count: "تعداد",
+    balance: "مانده", debt: "بدهی", credit: "بستانکاری", debit: "بدهکار", creditor: "بستانکار",
+    debtor: "بدهکار", status: "وضعیت", type: "نوع", method: "روش", methods: "روش‌ها",
+    date: "تاریخ", day: "روز", month: "ماه", year: "سال", created: "ایجاد", updated: "به‌روزرسانی",
+    first: "اولین", last: "آخرین", opening: "ابتدای دوره", closing: "پایان دوره", description: "توضیحات",
+    number: "شماره", invoice: "فاکتور", order: "سفارش", reference: "مرجع",
+  };
+  return key.split("_").map(part => words[part] || part).join(" ");
+}
+
+const DATE_KEY_PARTS = [
+  "date", "_at", "_on", "day", "month", "year", "created", "updated",
+  "last_purchase", "first_purchase", "last_payment", "first_payment",
+];
+
+function isDateKey(key: string) {
+  const normalized = key.toLowerCase();
+  return DATE_KEY_PARTS.some(part => normalized === part || normalized.includes(part));
+}
+
+function looksLikeIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(value);
+}
+
+function translateValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  const valueLabels: Record<string, string> = {
+    debtor: "بدهکار", creditor: "بستانکار", settled: "تسویه‌شده", active: "فعال", inactive: "غیرفعال",
+    cash: "نقدی", card: "کارتخوان", credit: "حسابی", purchase: "خرید", payment: "پرداخت",
+    return: "برگشت", sale: "فروش", adjustment: "تعدیل", receipt: "دریافت", expense: "هزینه",
+  };
+  return valueLabels[normalized] || value;
 }
 
 function ReportData({ data }: { data: unknown }) {
@@ -50,9 +199,12 @@ function ReportData({ data }: { data: unknown }) {
   const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
   const renderValue = (key: string, value: unknown) => {
     if (value === null || value === undefined || value === "") return "-";
-    if (/(_at|_date|^date$|^day$|^month$|^year$)/i.test(key) && typeof value === "string") {
-      const formatted = key.includes("_at") ? formatJalaliDateTime(value) : formatJalaliDate(value);
-      return formatted;
+    if (typeof value === "string") {
+      if (isDateKey(key) && looksLikeIsoDate(value)) {
+        const formatted = value.includes("T") || value.includes(" ") ? formatJalaliDateTime(value) : formatJalaliDate(value);
+        return formatted;
+      }
+      return translateValue(value);
     }
     return typeof value === "object" ? JSON.stringify(value) : String(value);
   };

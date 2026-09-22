@@ -33,6 +33,7 @@ import {
   type Supplier,
 } from "../../services/purchaseService";
 import { useStore } from "../../contexts/StoreContext";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 
 
@@ -364,16 +365,7 @@ const handleSubmit = async (
       "PURCHASE SAVE DATA:",
       error.response?.data
     );
-
-    setError(
-      error.response?.data
-        ? JSON.stringify(
-            error.response.data
-          )
-        : editingPurchase
-          ? "خطا در ویرایش خرید."
-          : "خطا در ثبت خرید."
-    );
+    setError(getApiErrorMessage(error, editingPurchase ? "خطا در ویرایش خرید." : "خطا در ثبت خرید."));
 
   } finally {
     setLoading(false);

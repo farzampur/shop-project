@@ -5,10 +5,9 @@ import { useStore } from "../contexts/StoreContext";
 import JalaliDateInput from "../components/JalaliDateInput";
 import { jalaliDateToIsoDate, todayJalali, toJalali, formatJalali } from "../utils/jalaliDate";
 import { cashFinancialReport, cashLedger, cashboxBalanceReport, dailyCashFlowReport, financialSummary, type CashBoxBalanceRow, type CashLedgerRow, type DailyCashFlowRow, type FinancialCashFlow, type FinancialSummary } from "../services/reportService";
+import { getApiErrorMessage as err } from "../utils/apiError";
 
 const money=(v:string|number)=>Number(v||0).toLocaleString("fa-IR");
-const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-const err=(e:any)=>e?.response?.data?.detail||e?.response?.data?.message||"دریافت گزارش مالی انجام نشد.";
 
 export default function FinancialReports(){
  const {activeStore,activeRole}=useStore();

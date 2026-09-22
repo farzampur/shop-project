@@ -17,6 +17,7 @@ import {
 
 import { listCategories, type Category } from "../../services/categoryService";
 import { createProduct, updateProduct } from "../../services/productService";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 interface Product {
   id: number;
@@ -80,7 +81,7 @@ function ProductForm({
 			error.response?.data
 		  );
 
-		  setError("خطا در دریافت دسته‌بندی‌ها");
+		  setError(getApiErrorMessage(error, "خطا در دریافت دسته‌بندی‌ها"));
 		})
 		.finally(() => {
 		  setCategoriesLoading(false);
@@ -149,14 +150,7 @@ function ProductForm({
           : "CREATE PRODUCT DATA:",
         error.response?.data
       );
-
-      setError(
-        error.response?.data
-          ? JSON.stringify(error.response.data)
-          : isEditMode
-            ? "خطا در ویرایش محصول"
-            : "خطا در ثبت محصول"
-      );
+      setError(getApiErrorMessage(error, isEditMode ? "خطا در ویرایش محصول" : "خطا در ثبت محصول"));
     } finally {
       setLoading(false);
     }

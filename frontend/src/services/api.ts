@@ -6,6 +6,7 @@ import type {
 
 import { refreshAccessToken, logout } from "./authService";
 import { tokenService } from "./tokenService";
+import { getApiErrorMessage } from "../utils/apiError";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
@@ -49,6 +50,8 @@ api.interceptors.response.use(
   (response) => response,
 
   async (error: AxiosError) => {
+    error.message = getApiErrorMessage(error, "ارتباط با سرور با خطا مواجه شد.");
+
     const originalRequest = error.config as
       | (InternalAxiosRequestConfig & {
           _retry?: boolean;

@@ -5,6 +5,7 @@ import CategoryForm from "./CategoryForm";
 import { formatJalaliDateTime } from "../../utils/jalaliDate";
 import { useStore } from "../../contexts/StoreContext";
 import { deleteCategory, listCategories } from "../../services/categoryService";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 import {
   Alert,
@@ -75,9 +76,7 @@ function Categories() {
         error.response?.data
       );
 
-      setError(
-        "خطا در دریافت دسته‌بندی‌ها"
-      );
+      setError(getApiErrorMessage(error, "خطا در دریافت دسته‌بندی‌ها"));
 
     } finally {
 
@@ -129,43 +128,7 @@ function Categories() {
         error.response?.data
       );
 
-      if (
-        error.response?.status === 400
-      ) {
-
-        const responseData =
-          error.response?.data;
-
-        if (
-          Array.isArray(responseData)
-        ) {
-
-          setError(
-            responseData[0]
-          );
-
-        } else if (
-          responseData?.detail
-        ) {
-
-          setError(
-            responseData.detail
-          );
-
-        } else {
-
-          setError(
-            "این دسته‌بندی دارای محصول است و قابل حذف نیست."
-          );
-        }
-
-      } else {
-
-        setError(
-          "خطا در حذف دسته‌بندی"
-        );
-
-      }
+      setError(getApiErrorMessage(error, "خطا در حذف دسته‌بندی"));
     }
   };
 

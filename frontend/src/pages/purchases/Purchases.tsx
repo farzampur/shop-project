@@ -36,6 +36,7 @@ import {
   type Purchase,
 } from "../../services/purchaseService";
 import { useStore } from "../../contexts/StoreContext";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 
 function Purchases() {
@@ -105,9 +106,7 @@ function Purchases() {
         error.response?.data
       );
 
-      setError(
-        "خطا در دریافت لیست خریدها."
-      );
+      setError(getApiErrorMessage(error, "خطا در دریافت لیست خریدها."));
     } finally {
       setLoading(false);
     }
@@ -188,10 +187,7 @@ function Purchases() {
 		  error.response?.data
 		);
 
-		setError(
-		  error.response?.data?.detail ||
-			"خطا در حذف خرید."
-		);
+		setError(getApiErrorMessage(error, "خطا در حذف خرید."));
 	  } finally {
 		setDeleting(false);
 	  }
@@ -222,10 +218,7 @@ function Purchases() {
 		  error.response?.data
 		);
 
-		setError(
-		  error.response?.data?.detail ||
-			"خطا در دریافت خرید."
-		);
+		setError(getApiErrorMessage(error, "خطا در دریافت خرید."));
 	  } finally {
 		setReceiving(false);
 	  }
@@ -247,7 +240,7 @@ function Purchases() {
       URL.revokeObjectURL(url);
     } catch (receiptError: any) {
       console.error("PURCHASE RECEIPT ERROR:", receiptError.response?.status);
-      setError("خطا در دریافت رسید خرید.");
+      setError(getApiErrorMessage(receiptError, "خطا در دریافت رسید خرید."));
     } finally {
       setReceiptLoadingId(null);
     }
@@ -294,18 +287,7 @@ function Purchases() {
 		  "RETURN PURCHASE DATA:",
 		  error.response?.data
 		);
-
-        const responseData = error.response?.data;
-        const apiMessage =
-          responseData?.detail ||
-          (Array.isArray(responseData) ? responseData[0] : null) ||
-          (responseData && typeof responseData === "object"
-            ? Object.values(responseData).flat().join(" ")
-            : null);
-
-		setError(
-          String(apiMessage || "خطا در ثبت برگشت خرید.")
-		);
+		setError(getApiErrorMessage(error, "خطا در ثبت برگشت خرید."));
 	  }
 	};
 

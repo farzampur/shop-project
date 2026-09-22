@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { login, saveTokens } from "../services/authService";
+import { getApiErrorMessage } from "../utils/apiError";
 import {
   useNavigate,
 } from "react-router-dom";
@@ -45,11 +46,7 @@ function Login() {
 	  console.error("STATUS:", error.response?.status);
 	  console.error("DATA:", error.response?.data);
 
-	  setError(
-		error.response?.data
-		  ? JSON.stringify(error.response.data)
-		  : "خطا در ارتباط با سرور"
-	  );
+	  setError(getApiErrorMessage(error, "ورود به حساب کاربری انجام نشد."));
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import ValidationError, MethodNotAllowed
+from rest_framework.exceptions import ValidationError, MethodNotAllowed, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Count, Avg, Max, Sum, Q, F, DecimalField, ExpressionWrapper, Value
@@ -63,6 +63,21 @@ from .serializers import (
     ProductBatchSerializer,
 )
 from accounts.store_access import has_store_access, user_store_ids
+
+
+def _report_store_ids(request):
+    """Resolve an optional report store and enforce store access."""
+    allowed_store_ids = set(user_store_ids(request.user))
+    raw_store_id = request.query_params.get("store")
+    if raw_store_id in (None, ""):
+        return allowed_store_ids
+    try:
+        store_id = int(raw_store_id)
+    except (TypeError, ValueError):
+        raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+    if store_id not in allowed_store_ids:
+        raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+    return {store_id}
 from accounts.permissions import StoreRolePermission
 from .permissions import InventoryPermission
 from core.audit import audit
@@ -1123,10 +1138,11 @@ class LowStockReportView(
         self,
         request
     ):
+        store_ids = _report_store_ids(request)
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store"
@@ -1187,13 +1203,14 @@ class OutOfStockReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         دریافت لیست کالاهای اتمام‌یافته.
         """
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store"
@@ -1337,6 +1354,7 @@ class InventoryValueReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         محاسبه ارزش موجودی کالاها
         و مجموع ارزش کل انبار.
@@ -1344,7 +1362,7 @@ class InventoryValueReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store",
@@ -1430,6 +1448,7 @@ class SlowMovingInventoryReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         دریافت گزارش کالاهای کم‌گردش.
 
@@ -1478,7 +1497,7 @@ class SlowMovingInventoryReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store",
@@ -1574,6 +1593,7 @@ class InventoryPotentialProfitReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         محاسبه سود بالقوه هر موجودی
         و مجموع سود بالقوه کل انبار.
@@ -1588,7 +1608,7 @@ class InventoryPotentialProfitReportView(APIView):
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store",
@@ -1693,13 +1713,14 @@ class StoreInventorySummaryView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         محاسبه خلاصه موجودی هر فروشگاه.
         """
 
         inventories = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "store",
                 "product",
@@ -1816,13 +1837,14 @@ class InventoryReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         دریافت گزارش موجودی و اعمال فیلترهای درخواست.
         """
 
         queryset = (
             Inventory.objects
-            .filter(store_id__in=user_store_ids(self.request.user))
+            .filter(store_id__in=store_ids)
             .select_related(
                 "product",
                 "store",
@@ -1832,9 +1854,7 @@ class InventoryReportView(APIView):
                 )            
         )
 
-        store_id = request.query_params.get(
-            "store_id"
-        )        
+        store_id = request.query_params.get("store") or request.query_params.get("store_id")        
 
         product_id = request.query_params.get(
             "product_id"
@@ -1972,6 +1992,7 @@ class InventoryDashboardView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         محاسبه شاخص‌های اصلی انبار
         برای فروشگاه‌های مجاز کاربر.
@@ -1980,7 +2001,7 @@ class InventoryDashboardView(APIView):
         inventories = (
             Inventory.objects
             .filter(
-                store__store_users__user=request.user
+                store_id__in=store_ids
             )
             .select_related(
                 "product",
@@ -2671,6 +2692,7 @@ class SupplierPurchaseReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         تولید گزارش خرید تأمین‌کنندگان.
         """
@@ -2743,14 +2765,10 @@ class SupplierPurchaseReportView(APIView):
         # Query خریدها
         # -------------------------
 
-        suppliers = (
-            Supplier.objects
-            .filter(
-                store_id__in=user_store_ids(request.user),
-                purchases__in=purchases,
-            )
+        purchases = Purchase.objects.filter(
+            supplier__store_id__in=store_ids
         )
-        
+
         if supplier_id:
             purchases = purchases.filter(
                 supplier_id=supplier_id
@@ -2773,6 +2791,7 @@ class SupplierPurchaseReportView(APIView):
         suppliers = (
             Supplier.objects
             .filter(
+                store_id__in=store_ids,
                 purchases__in=purchases
             )
             .annotate(
@@ -2885,6 +2904,7 @@ class SupplierPaymentReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
 
         supplier_id = request.query_params.get(
             "supplier_id"
@@ -2943,7 +2963,7 @@ class SupplierPaymentReportView(APIView):
         transactions = (
             SupplierTransaction.objects
             .filter(
-                supplier__store_id__in=user_store_ids(self.request.user),
+                supplier__store_id__in=store_ids,
                 transaction_type="payment",
             )
         )
@@ -2967,7 +2987,7 @@ class SupplierPaymentReportView(APIView):
         suppliers = (
             Supplier.objects
             .filter(
-                store_id__in=user_store_ids(request.user),
+                store_id__in=store_ids,
                 transactions__in=transactions,
             )
             .annotate(
@@ -3086,6 +3106,7 @@ class SupplierBalanceReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
         """
         گزارش مانده همه تأمین‌کنندگان.
 
@@ -3116,7 +3137,7 @@ class SupplierBalanceReportView(APIView):
         suppliers = (
             Supplier.objects
             .filter(
-                store_id__in=user_store_ids(request.user)
+                store_id__in=store_ids
             )
             .prefetch_related(
                 "transactions"
@@ -3216,11 +3237,12 @@ class SupplierComprehensiveReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
 
         suppliers = (
             Supplier.objects
             .filter(
-                store_id__in=user_store_ids(request.user)
+                store_id__in=store_ids
             )
             .prefetch_related(
                 "purchases",

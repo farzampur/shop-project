@@ -38,6 +38,7 @@ import {
 } from "../../services/productService";
 import ProductForm from "./ProductForm";
 import { useStore } from "../../contexts/StoreContext";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 type PreviewFile = {
   title: string;
@@ -73,7 +74,7 @@ function Products() {
       .then(setProducts)
       .catch((loadError) => {
         console.error("PRODUCTS ERROR:", loadError);
-        setError("خطا در دریافت محصولات");
+        setError(getApiErrorMessage(loadError, "خطا در دریافت محصولات"));
       })
       .finally(() => setLoading(false));
   };
@@ -111,7 +112,7 @@ function Products() {
           "این محصول دارای سابقه خرید، فروش یا برگشت است و قابل حذف نیست. در صورت نیاز، محصول را غیرفعال کنید.",
         );
       } else {
-        setError("خطا در حذف محصول");
+        setError(getApiErrorMessage(deleteError, "خطا در حذف محصول"));
       }
     }
   };
@@ -143,7 +144,7 @@ function Products() {
       showBlob(blob, title, kind);
     } catch (documentError: any) {
       console.error("PRODUCT DOCUMENT ERROR:", documentError.response?.status);
-      setError("خطا در دریافت فایل محصول.");
+      setError(getApiErrorMessage(documentError, "خطا در دریافت فایل محصول."));
     } finally {
       setDocumentLoading(false);
       closeMenu();

@@ -51,6 +51,21 @@ from core.audit import audit
 from products.pricing import get_effective_sale_price, get_active_batch
 
 
+def _report_store_ids(request):
+    """Resolve an optional report store and enforce store access."""
+    allowed_store_ids = set(user_store_ids(request.user))
+    raw_store_id = request.query_params.get("store")
+    if raw_store_id in (None, ""):
+        return allowed_store_ids
+    try:
+        store_id = int(raw_store_id)
+    except (TypeError, ValueError):
+        raise ValidationError({"store": "شناسه فروشگاه نامعتبر است."})
+    if store_id not in allowed_store_ids:
+        raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+    return {store_id}
+
+
 def get_total_sellable_batch_quantity(product, store_id):
     return (
         ProductBatch.objects
@@ -907,10 +922,11 @@ class CustomerReportView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
 
         customers = (
             Customer.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=store_ids)
             .annotate(
                 order_count=Count(
                     "orders"
@@ -1160,9 +1176,10 @@ class DebtorCustomersView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
 
         result = []
-        for customer in Customer.objects.filter(store_id__in=user_store_ids(request.user)):
+        for customer in Customer.objects.filter(store_id__in=store_ids):
 
             sales_amount = (
                 CustomerTransaction.objects
@@ -1217,10 +1234,11 @@ class CreditorCustomersView(APIView):
     ]
 
     def get(self, request):
+        store_ids = _report_store_ids(request)
 
         result = []
 
-        for customer in Customer.objects.filter(store_id__in=user_store_ids(request.user)):
+        for customer in Customer.objects.filter(store_id__in=store_ids):
             sales_amount = (
                 CustomerTransaction.objects
                 .filter(
@@ -1484,7 +1502,7 @@ class FinancialSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        store_ids = user_store_ids(request.user)
+        store_ids = _report_store_ids(request)
         orders = Order.objects.filter(store_id__in=store_ids, status="paid")
         expenses = Expense.objects.filter(store_id__in=store_ids)
         cashboxes = CashBox.objects.filter(store_id__in=store_ids)
@@ -1562,11 +1580,12 @@ class FinancialReportView(
         self,
         request
     ):
+        store_ids = _report_store_ids(request)
 
         receipts = (
             CashBoxTransaction.objects
             .filter(
-                cashbox__store_id__in=user_store_ids(request.user),
+                cashbox__store_id__in=store_ids,
                 transaction_type__in=[
                     "receive",
                     "deposit",
@@ -1581,7 +1600,7 @@ class FinancialReportView(
         payments = (
             CashBoxTransaction.objects
             .filter(
-                cashbox__store_id__in=user_store_ids(request.user),
+                cashbox__store_id__in=store_ids,
                 transaction_type__in=[
                     "payment",
                     "withdraw",
@@ -1619,10 +1638,11 @@ class CashLedgerView(
         self,
         request
     ):
+        store_ids = _report_store_ids(request)
 
         transactions = (
             CashBoxTransaction.objects
-            .filter(cashbox__store_id__in=user_store_ids(request.user))
+            .filter(cashbox__store_id__in=store_ids)
             .select_related("cashbox")
             .order_by("-id")
         )
@@ -1668,13 +1688,14 @@ class CashBoxBalanceReportView(
         self,
         request
     ):
+        store_ids = _report_store_ids(request)
         """
         دریافت گزارش مانده صندوق‌ها
         """
 
         cashboxes = (
             CashBox.objects
-            .filter(store_id__in=user_store_ids(request.user))
+            .filter(store_id__in=store_ids)
             .select_related("store")
             .annotate(
                 transaction_count=Count(
@@ -1773,6 +1794,7 @@ class DailyCashFlowReportView(
         self,
         request
     ):
+        store_ids = _report_store_ids(request)
         """
         تولید گزارش گردش مالی روزانه
         """
@@ -1786,7 +1808,7 @@ class DailyCashFlowReportView(
         )
 
         queryset = CashBoxTransaction.objects.filter(
-            cashbox__store_id__in=user_store_ids(request.user)
+            cashbox__store_id__in=store_ids
         )
 
         # اعتبارسنجی تاریخ شروع

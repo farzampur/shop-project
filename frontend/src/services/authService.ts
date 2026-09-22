@@ -1,5 +1,6 @@
 import axios from "axios";
 import { tokenService } from "./tokenService";
+import { getApiErrorMessage } from "../utils/apiError";
 
 const AUTH_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "/api";
@@ -19,6 +20,14 @@ const authApi = axios.create({
   // Required when frontend/API are different origins in development.
   withXSRFToken: true,
 });
+
+authApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    error.message = getApiErrorMessage(error, "ارتباط با سرور با خطا مواجه شد.");
+    return Promise.reject(error);
+  },
+);
 
 export interface LoginResponse {
   access: string;
