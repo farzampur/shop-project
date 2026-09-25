@@ -35,8 +35,6 @@ class PurchaseReceivedIntegrityTests(TestCase):
             name="Product 6.9.4 D",
             barcode="6940003",
             category=category,
-            purchase_price=Decimal("50"),
-            sale_price=Decimal("100"),
         )
         self.supplier = Supplier.objects.create(
             name="Supplier 6.9.4 D",

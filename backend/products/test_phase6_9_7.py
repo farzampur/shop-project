@@ -14,7 +14,6 @@ class InventoryTransactionIntegrity697Tests(TestCase):
             name="697 Product",
             barcode="697-BAR",
             category=self._category(),
-            purchase_price=Decimal("10"),
         )
 
     def _category(self):

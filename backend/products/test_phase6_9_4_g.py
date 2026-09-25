@@ -20,8 +20,6 @@ class InventoryLedgerIntegrityTests(TestCase):
             name="G Product",
             barcode="4234567890121",
             category=category,
-            purchase_price=Decimal("50"),
-            sale_price=Decimal("100"),
         )
         self.inventory = Inventory.objects.create(
             product=self.product,

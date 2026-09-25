@@ -14,13 +14,6 @@ class CartItemSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    purchase_price = serializers.DecimalField(
-        source="product.purchase_price",
-        max_digits=15,
-        decimal_places=2,
-        read_only=True
-    )
-
     discount_amount = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -68,7 +61,6 @@ class CartItemSerializer(serializers.ModelSerializer):
             "quantity",
             "unit_price",
             "price_type",
-            "purchase_price",
             "discount_percent",
             "discount_amount",
             "final_unit_price",

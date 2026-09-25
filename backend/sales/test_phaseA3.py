@@ -20,7 +20,6 @@ class PhaseA3SaleReturnFinancialIntegrityTests(TestCase):
         self.category = Category.objects.create(name="A3 Category", store=self.store)
         self.product = Product.objects.create(
             name="A3 Product", barcode="A3-0001", category=self.category,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         self.inventory = Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("10"))
         self.batch1 = ProductBatch.objects.create(

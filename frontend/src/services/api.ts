@@ -33,6 +33,30 @@ api.interceptors.request.use(
       return config;
     }
 
+    // Every store-scoped request carries the active store explicitly.
+    // The backend still validates ownership; this is only a client-side
+    // consistency guard that prevents stale data from another store when
+    // switching branches.
+    const url = config.url || "";
+    const isGlobalEndpoint =
+      url.startsWith("/stores") ||
+      url.startsWith("/accounts/me") ||
+      url.startsWith("/auth/");
+    if (!isGlobalEndpoint) {
+      const activeStoreId = Number(localStorage.getItem("active_store_id"));
+      if (Number.isInteger(activeStoreId) && activeStoreId > 0) {
+        const params = config.params instanceof URLSearchParams
+          ? config.params
+          : { ...(config.params ?? {}) };
+        if (params instanceof URLSearchParams) {
+          if (!params.has("store")) params.set("store", String(activeStoreId));
+        } else if (params.store === undefined || params.store === null || params.store === "") {
+          params.store = activeStoreId;
+        }
+        config.params = params;
+      }
+    }
+
     const accessToken = tokenService.getAccessToken();
 
     if (accessToken) {

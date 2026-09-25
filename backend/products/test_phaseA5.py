@@ -38,7 +38,6 @@ class PhaseA5TransferReportsE2ETests(TestCase):
         self.category = Category.objects.create(name="A5 Category", store=self.source)
         self.product = Product.objects.create(
             name="A5 Product", barcode="A5000000001", category=self.category,
-            purchase_price=Decimal("50"), sale_price=Decimal("80"),
         )
         Inventory.objects.create(product=self.product, store=self.source, quantity=Decimal("10"), min_quantity=Decimal("2"))
         self.factory = APIRequestFactory()

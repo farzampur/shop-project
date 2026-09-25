@@ -118,7 +118,9 @@ class ProductBatchTests(TestCase):
 
         self.assertEqual(item.quantity, Decimal("8"))
         self.assertEqual(item.unit_price, Decimal("110"))
-        self.assertEqual(item.purchase_price, Decimal("105"))
+        # FIFO COGS snapshot is the quantity-weighted average of the allocated batches:
+        # (5*100 + 3*120) / 8 = 107.50.
+        self.assertEqual(item.purchase_price, Decimal("107.50"))
         allocations = list(
             OrderItemBatch.objects.filter(order_item=item)
             .order_by("id")

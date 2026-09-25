@@ -17,7 +17,7 @@ class OrderSettlementIntegrity695Tests(TestCase):
         self.user = User.objects.create_user(username="sales695", password="test123")
         UserStore.objects.create(user=self.user, store=self.store, role="seller", is_active=True)
         self.category = Category.objects.create(store=self.store, name="695 Sales Category")
-        self.product = Product.objects.create(category=self.category, name="695 Sales Product", purchase_price=Decimal("10"), sale_price=Decimal("20"))
+        self.product = Product.objects.create(category=self.category, name="695 Sales Product")
         Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("5"), min_quantity=0)
         ProductBatch.objects.create(product=self.product, store=self.store, quantity=Decimal("5"), remaining_quantity=Decimal("5"), purchase_price=Decimal("10"), sale_price=Decimal("20"))
 

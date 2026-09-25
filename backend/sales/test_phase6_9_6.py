@@ -17,7 +17,7 @@ class FinancialDatabaseIntegrity696Tests(TestCase):
         UserStore.objects.create(user=self.user, store=self.store, role="manager", is_active=True)
         self.cashbox = CashBox.objects.create(store=self.store, name="696 Cash", balance=Decimal("100"))
         category = Category.objects.create(store=self.store, name="696 Category")
-        self.product = Product.objects.create(category=category, name="696 Product", purchase_price=Decimal("10"), sale_price=Decimal("20"))
+        self.product = Product.objects.create(category=category, name="696 Product")
         self.supplier = Supplier.objects.create(store=self.store, name="696 Supplier")
 
     def _violates(self, create):

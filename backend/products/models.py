@@ -69,20 +69,6 @@ class Product(models.Model):
         verbose_name="واحد"
     )
 
-    purchase_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        verbose_name="قیمت خرید"
-    )
-
-    sale_price = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        default=0,
-        verbose_name="قیمت فروش"
-    )
-
     is_active = models.BooleanField(
         default=True,
         verbose_name="فعال"

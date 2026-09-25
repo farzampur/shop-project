@@ -94,7 +94,7 @@ class ReleaseInvariantTests(TestCase):
         serializer = ProductPriceSerializer(data={
             "product": product.id,
             "store": store.id,
-            "price_type": "retail",
+            "price_type": "wholesale",
             "amount": "0",
         })
         self.assertFalse(serializer.is_valid())

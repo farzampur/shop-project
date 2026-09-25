@@ -42,8 +42,6 @@ class Phase616FinancialInventoryE2ETests(TestCase):
             name="Phase 616 Product",
             barcode="6160000001",
             category=self.category,
-            purchase_price=Decimal("40"),
-            sale_price=Decimal("100"),
         )
         self.supplier = Supplier.objects.create(store=self.store, name="Phase 616 Supplier")
         self.cashbox = CashBox.objects.create(

@@ -36,8 +36,6 @@ class PurchaseReturnMutationIntegrityTests(TestCase):
             name="Product 6.9.4 C",
             barcode="6940002",
             category=category,
-            purchase_price=Decimal("50"),
-            sale_price=Decimal("100"),
         )
         self.supplier = Supplier.objects.create(
             name="Supplier 6.9.4 C",

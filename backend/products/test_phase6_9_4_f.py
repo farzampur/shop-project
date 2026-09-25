@@ -17,7 +17,7 @@ class BatchInvariantTests(TestCase):
         UserStore.objects.create(user=self.user, store=self.destination_store, role="manager", is_active=True)
         UserStore.objects.create(user=self.user, store=self.store, role="manager", is_active=True)
         category = Category.objects.create(name="Cat 6.9.4 F", store=self.store)
-        self.product = Product.objects.create(name="Product 6.9.4 F", barcode="6940002", category=category, purchase_price=Decimal("50"), sale_price=Decimal("100"))
+        self.product = Product.objects.create(name="Product 6.9.4 F", barcode="6940002", category=category)
         supplier = Supplier.objects.create(name="Supplier 6.9.4 F", store=self.store)
         purchase = Purchase.objects.create(supplier=supplier, store=self.store, user=self.user, received=True)
         self.item = PurchaseItem.objects.create(purchase=purchase, product=self.product, quantity=Decimal("10"), unit_price=Decimal("50"), sale_price=Decimal("80"))

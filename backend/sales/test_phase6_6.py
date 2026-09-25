@@ -4,7 +4,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from django.contrib.auth.models import User
 from core.models import Store
 from accounts.models import UserStore
-from products.models import Category, Product, Inventory
+from products.models import Category, Product, Inventory, ProductBatch
 from .models import Cart, CartItem, CashBox
 from .services import CheckoutService
 from .views import SalesReportViewSet
@@ -22,10 +22,11 @@ class Phase66ReportTests(TestCase):
         UserStore.objects.create(user=self.seller, store=self.a, role="seller")
         ca = Category.objects.create(name="A", store=self.a)
         cb = Category.objects.create(name="B", store=self.b)
-        self.pa = Product.objects.create(name="کالای A", barcode="660000000001", category=ca, purchase_price=10, sale_price=20)
-        self.pb = Product.objects.create(name="کالای B", barcode="660000000002", category=cb, purchase_price=15, sale_price=30)
+        self.pa = Product.objects.create(name="کالای A", barcode="660000000001", category=ca)
+        self.pb = Product.objects.create(name="کالای B", barcode="660000000002", category=cb)
         Inventory.objects.create(product=self.pa, store=self.a, quantity=10, min_quantity=3)
         Inventory.objects.create(product=self.pb, store=self.b, quantity=2, min_quantity=5)
+        ProductBatch.objects.create(product=self.pa, store=self.a, quantity=10, remaining_quantity=10, purchase_price=10, sale_price=20)
         self.cash = CashBox.objects.create(store=self.a, name="صندوق A", balance=0)
         cart = Cart.objects.create(user=self.seller, store=self.a)
         CartItem.objects.create(cart=cart, product=self.pa, quantity=2, unit_price=20)

@@ -12,7 +12,15 @@ ROLE_PERMISSIONS = {
 
 def get_store_from_request(request, view=None):
     """Resolve the target store for both direct and related-object requests."""
-    store_id = request.query_params.get("store") or request.data.get("store")
+    query_store_id = request.query_params.get("store")
+    body_store_id = request.data.get("store")
+    if query_store_id not in (None, "") and body_store_id not in (None, ""):
+        try:
+            if int(query_store_id) != int(body_store_id):
+                raise PermissionDenied("فروشگاه درخواست با فروشگاه فعال یکسان نیست.")
+        except (TypeError, ValueError):
+            raise PermissionDenied("شناسه فروشگاه نامعتبر است.")
+    store_id = query_store_id or body_store_id
     if store_id:
         return store_id
 
@@ -97,6 +105,17 @@ class StoreRolePermission(BasePermission):
         return ROLE_PERMISSIONS.get(role, {}).get(request.method, False)
 
     def has_object_permission(self, request, view, obj):
+        # If the client explicitly identifies the active store, the target
+        # object must belong to that exact store. This prevents an object id
+        # from another accessible store being operated on through an endpoint
+        # whose queryset does not itself filter by store.
+        requested_store = request.query_params.get("store") or request.data.get("store")
+        if requested_store not in (None, ""):
+            try:
+                requested_store = int(requested_store)
+            except (TypeError, ValueError):
+                return False
+
         store = getattr(obj, "store", None)
         if store is None and hasattr(obj, "cart"):
             store = obj.cart.store
@@ -107,6 +126,8 @@ class StoreRolePermission(BasePermission):
         if store is None and hasattr(obj, "source_store"):
             store = obj.source_store
         if store is None:
+            return False
+        if requested_store is not None and store.id != requested_store:
             return False
         role = get_user_store_role(request.user, store.id)
         allowed_roles_by_method = getattr(view, "allowed_roles_by_method", None)

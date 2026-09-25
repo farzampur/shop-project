@@ -7,7 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from accounts.models import UserStore
 from core.models import Store
-from products.models import Category, Product, Inventory
+from products.models import Category, Product, Inventory, ProductBatch
 from .models import CashBox, CashBoxTransaction, CashTransfer, Expense, Order, Cart, CartItem, Payment
 from .services import CheckoutService
 from .views import CashBoxTransactionViewSet, CashTransferViewSet, ExpenseViewSet, DashboardView, SalesReportViewSet
@@ -47,8 +47,8 @@ class Phase4CashFinanceTests(TestCase):
             self.user, "post", "/api/sales/cashbox-transactions/",
             {"cashbox": self.cash_a.id, "transaction_type": "withdraw", "amount": "501"},
         )
-        with self.assertRaises(ValidationError):
-            CashBoxTransactionViewSet.as_view({"post": "create"})(request)
+        response = CashBoxTransactionViewSet.as_view({"post": "create"})(request)
+        self.assertEqual(response.status_code, 400, getattr(response, "data", None))
         self.cash_a.refresh_from_db()
         self.assertEqual(self.cash_a.balance, Decimal("500"))
         self.assertFalse(CashBoxTransaction.objects.filter(cashbox=self.cash_a).exists())
@@ -71,8 +71,8 @@ class Phase4CashFinanceTests(TestCase):
             self.user, "post", "/api/sales/cash-transfers/",
             {"from_cashbox": self.cash_a.id, "to_cashbox": self.cash_b.id, "amount": "50"},
         )
-        with self.assertRaises(ValidationError):
-            CashTransferViewSet.as_view({"post": "create"})(request)
+        response = CashTransferViewSet.as_view({"post": "create"})(request)
+        self.assertEqual(response.status_code, 400, getattr(response, "data", None))
         self.cash_a.refresh_from_db(); self.cash_b.refresh_from_db()
         self.assertEqual(self.cash_a.balance, Decimal("500"))
         self.assertEqual(self.cash_b.balance, Decimal("900"))
@@ -97,8 +97,8 @@ class Phase4CashFinanceTests(TestCase):
             self.user, "post", "/api/sales/expenses/",
             {"store": self.store_a.id, "cashbox": self.cash_b.id, "expense_type": "other", "title": "غیرمجاز", "amount": "50", "expense_date": date.today().isoformat()},
         )
-        with self.assertRaises(ValidationError):
-            ExpenseViewSet.as_view({"post": "create"})(request)
+        response = ExpenseViewSet.as_view({"post": "create"})(request)
+        self.assertEqual(response.status_code, 400, getattr(response, "data", None))
         self.assertFalse(Expense.objects.filter(title="غیرمجاز").exists())
 
 
@@ -110,9 +110,9 @@ class Phase4ReportTests(TestCase):
         cat = Category.objects.create(name="Report Cat", store=self.store)
         self.product = Product.objects.create(
             name="Report Product", barcode="4234567890129", category=cat,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("20"))
+        ProductBatch.objects.create(product=self.product, store=self.store, quantity=20, remaining_quantity=20, purchase_price=50, sale_price=100)
         self.cash = CashBox.objects.create(store=self.store, name="Main", balance=Decimal("0"))
         cart = Cart.objects.create(user=self.user, store=self.store)
         CartItem.objects.create(cart=cart, product=self.product, quantity=Decimal("2"), unit_price=Decimal("100"))
@@ -146,5 +146,5 @@ class Phase4ReportTests(TestCase):
         other_store = Store.objects.create(name="Other", code="R4-B")
         request = self.factory.get("/api/sales/sales-report/summary/", {"store": other_store.id})
         force_authenticate(request, user=self.user)
-        with self.assertRaises(PermissionDenied):
-            SalesReportViewSet.as_view({"get": "summary"})(request)
+        response = SalesReportViewSet.as_view({"get": "summary"})(request)
+        self.assertEqual(response.status_code, 403, getattr(response, "data", None))

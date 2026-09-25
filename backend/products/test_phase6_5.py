@@ -24,7 +24,6 @@ class StockTransferPhase65Tests(TestCase):
         self.cat = Category.objects.create(name="P65 Cat", store=self.source)
         self.product = Product.objects.create(
             name="P65 Product", barcode="8234567890120", category=self.cat,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         self.inventory = Inventory.objects.create(
             product=self.product, store=self.source, quantity=Decimal("10"), min_quantity=Decimal("2")

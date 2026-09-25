@@ -39,11 +39,9 @@ class Phase4InventoryTests(TestCase):
         self.cat_b = Category.objects.create(name="Cat B", store=self.store_b)
         self.product_a = Product.objects.create(
             name="Product A", barcode="1234567890128", category=self.cat_a,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         self.product_b = Product.objects.create(
             name="Product B", barcode="2234567890125", category=self.cat_b,
-            purchase_price=Decimal("60"), sale_price=Decimal("120"),
         )
         self.inventory_a = Inventory.objects.create(
             product=self.product_a, store=self.store_a,
@@ -131,7 +129,6 @@ class Phase4SupplierTests(TestCase):
         self.cat = Category.objects.create(name="Cat", store=self.store_a)
         self.product = Product.objects.create(
             name="Purchased Product", barcode="3234567890122", category=self.cat,
-            purchase_price=Decimal("80"), sale_price=Decimal("120"),
         )
         self.supplier = Supplier.objects.create(name="Supplier A", store=self.store_a)
         self.other_supplier = Supplier.objects.create(name="Supplier B", store=self.store_b)

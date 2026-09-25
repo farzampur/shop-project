@@ -25,8 +25,6 @@ class ReceivedPurchaseItemMutationTests(TestCase):
             name="Product 6.9.4 B",
             barcode="6940001",
             category=category,
-            purchase_price=Decimal("50"),
-            sale_price=Decimal("100"),
         )
         supplier = Supplier.objects.create(name="Supplier 6.9.4 B", store=self.store)
         self.purchase = Purchase.objects.create(

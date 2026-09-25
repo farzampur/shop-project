@@ -88,7 +88,7 @@ class AccessControl610Tests(TestCase):
     def test_product_price_record_cannot_be_moved_between_stores(self):
         Inventory.objects.create(product=self.product, store=self.store_a, quantity=1)
         price = ProductPrice.objects.create(
-            product=self.product, store=self.store_a, price_type=ProductPrice.TYPE_RETAIL,
+            product=self.product, store=self.store_a, price_type=ProductPrice.TYPE_WHOLESALE,
             amount=10, created_by=self.manager,
         )
         ser = self.serializer(ProductPriceSerializer, price, {"store": self.store_b.id})

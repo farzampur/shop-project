@@ -20,7 +20,7 @@ class BusinessLogicIntegrityAudit695Tests(TestCase):
             UserStore.objects.create(user=self.user, store=store, role="manager", is_active=True)
 
         category = Category.objects.create(store=self.store_a, name="695 Category")
-        self.product = Product.objects.create(category=category, name="695 Product", purchase_price=Decimal("10"), sale_price=Decimal("20"))
+        self.product = Product.objects.create(category=category, name="695 Product")
         Inventory.objects.create(product=self.product, store=self.store_a, quantity=Decimal("10"), min_quantity=0)
         self.factory = APIRequestFactory()
 

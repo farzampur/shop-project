@@ -25,3 +25,19 @@ def require_store_access(user, store_id, roles=None):
 
 def require_object_store_access(user, store, roles=None):
     require_store_access(user, store.id, roles)
+
+
+def requested_store_id(request, user, *, required=False):
+    """Return the explicitly requested store after validating user access."""
+    value = request.query_params.get("store") or request.data.get("store")
+    if value in (None, ""):
+        if required:
+            raise PermissionDenied("فروشگاه مشخص نشده است.")
+        return None
+    try:
+        store_id = int(value)
+    except (TypeError, ValueError):
+        raise PermissionDenied("شناسه فروشگاه نامعتبر است.")
+    if not has_store_access(user, store_id):
+        raise PermissionDenied("شما به این فروشگاه دسترسی ندارید.")
+    return store_id

@@ -8,7 +8,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from accounts.models import UserStore
 from core.models import Store
-from products.models import Category, Inventory, Product, Supplier, SupplierTransaction
+from products.models import Category, Inventory, Product, ProductBatch, Supplier, SupplierTransaction
 from products.views import SupplierPaymentViewSet, SupplierTransactionViewSet
 
 from .models import (
@@ -40,9 +40,9 @@ class FinancialTransactionIntegrityTests(TestCase):
         self.category = Category.objects.create(name="I Cat", store=self.store)
         self.product = Product.objects.create(
             name="I Product", barcode="9900000000001", category=self.category,
-            purchase_price=Decimal("40"), sale_price=Decimal("100"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("10"))
+        ProductBatch.objects.create(product=self.product, store=self.store, quantity=10, remaining_quantity=10, purchase_price=40, sale_price=100)
         self.factory = APIRequestFactory()
 
     def _request(self, method, path, data):

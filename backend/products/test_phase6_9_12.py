@@ -26,8 +26,8 @@ class FinalIntegritySweep612Tests(TestCase):
 
     def test_product_price_end_must_be_after_start(self):
         start = timezone.now()
-        self.reject(ProductPrice, product=self.product, store=self.store, price_type="retail", amount=Decimal("10"), effective_from=start, effective_to=start, created_by=self.user)
+        self.reject(ProductPrice, product=self.product, store=self.store, price_type="wholesale", amount=Decimal("10"), effective_from=start, effective_to=start, created_by=self.user)
 
     def test_product_price_open_ended_interval_is_allowed(self):
-        price = ProductPrice.objects.create(product=self.product, store=self.store, price_type="retail", amount=Decimal("10"), effective_from=timezone.now(), effective_to=None, created_by=self.user)
+        price = ProductPrice.objects.create(product=self.product, store=self.store, price_type="wholesale", amount=Decimal("10"), effective_from=timezone.now(), effective_to=None, created_by=self.user)
         self.assertIsNone(price.effective_to)

@@ -9,7 +9,7 @@ from threading import Barrier
 
 from accounts.models import UserStore
 from core.models import Store
-from products.models import Category, Product, Inventory
+from products.models import Category, Product, Inventory, ProductBatch
 from .models import Cart, CartItem, Order, OrderCancellation, Customer, CashBox, CashBoxTransaction, CustomerTransaction, Payment
 from .services import CheckoutService, OrderService
 from .views import CustomerViewSet, CashBoxViewSet
@@ -27,14 +27,14 @@ class FinancialCoreTests(TestCase):
         self.cat_b = Category.objects.create(name="Cat B", store=self.store_b)
         self.product_a = Product.objects.create(
             name="Product A", barcode="1234567890123", category=self.cat_a,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         self.product_b = Product.objects.create(
             name="Product B", barcode="2234567890123", category=self.cat_b,
-            purchase_price=Decimal("60"), sale_price=Decimal("120"),
         )
         Inventory.objects.create(product=self.product_a, store=self.store_a, quantity=10)
         Inventory.objects.create(product=self.product_b, store=self.store_b, quantity=10)
+        ProductBatch.objects.create(product=self.product_a, store=self.store_a, quantity=10, remaining_quantity=10, purchase_price=50, sale_price=100)
+        ProductBatch.objects.create(product=self.product_b, store=self.store_b, quantity=10, remaining_quantity=10, purchase_price=60, sale_price=120)
         self.customer_a = Customer.objects.create(store=self.store_a, first_name="Ali", mobile="09120000001")
         self.customer_b = Customer.objects.create(store=self.store_b, first_name="Reza", mobile="09120000002")
         self.cash_a = CashBox.objects.create(store=self.store_a, name="Main")
@@ -186,8 +186,9 @@ class FinancialCoreTests(TestCase):
         order = CheckoutService.checkout(cart, [{"method": "cash", "amount": Decimal("200"), "cashbox_id": self.cash_a.id}])
         item = order.items.get()
         self.assertEqual(item.purchase_price, Decimal("50"))
-        self.product_a.purchase_price = Decimal("70")
-        self.product_a.save(update_fields=["purchase_price"])
+        batch = ProductBatch.objects.get(product=self.product_a, store=self.store_a)
+        batch.purchase_price = Decimal("70")
+        batch.save(update_fields=["purchase_price", "updated_at"])
         item.refresh_from_db()
         self.assertEqual(item.purchase_price, Decimal("50"))
 
@@ -251,9 +252,9 @@ class ConcurrencyHardeningTests(TransactionTestCase):
         self.category = Category.objects.create(name="Concurrent Cat", store=self.store)
         self.product = Product.objects.create(
             name="Concurrent Product", barcode="9999999999999", category=self.category,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=1)
+        ProductBatch.objects.create(product=self.product, store=self.store, quantity=1, remaining_quantity=1, purchase_price=50, sale_price=100)
         self.cashbox = CashBox.objects.create(store=self.store, name="Concurrent Cash")
 
     def _make_cart(self):
@@ -331,9 +332,9 @@ class OrderCancellationTests(TestCase):
         self.category = Category.objects.create(name="Cancel Cat", store=self.store)
         self.product = Product.objects.create(
             name="Cancel Product", barcode="8888888888888", category=self.category,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=10)
+        ProductBatch.objects.create(product=self.product, store=self.store, quantity=10, remaining_quantity=10, purchase_price=50, sale_price=100)
         self.cashbox = CashBox.objects.create(store=self.store, name="Cancel Cash")
         self.customer = Customer.objects.create(store=self.store, first_name="Test", mobile="09121111111")
 
@@ -392,7 +393,6 @@ class PermissionsMatrixTests(TestCase):
         self.category = Category.objects.create(name="Category", store=self.store)
         self.product = Product.objects.create(
             name="Product", barcode="5555555555555", category=self.category,
-            purchase_price=Decimal("10"), sale_price=Decimal("20"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=10)
         self.customer = Customer.objects.create(

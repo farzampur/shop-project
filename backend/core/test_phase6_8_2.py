@@ -46,8 +46,6 @@ class Phase682E2EAndIsolationTests(TestCase):
             category=self.category,
             name="کالای E2E",
             barcode="6820001",
-            purchase_price=Decimal("100.00"),
-            sale_price=Decimal("150.00"),
         )
         self.inventory_a = Inventory.objects.create(
             product=self.product, store=self.a, quantity=Decimal("10")
@@ -163,16 +161,7 @@ class Phase682E2EAndIsolationTests(TestCase):
         self.assertEqual(Inventory.objects.get(product=self.product, store=self.a).quantity, Decimal("10.000"))
         self.assertEqual(Inventory.objects.get(product=self.product, store=self.b).quantity, Decimal("5.000"))
 
-        # 3) Configure destination-store pricing.
-        ProductPrice.objects.create(
-            product=self.product,
-            store=self.b,
-            price_type=ProductPrice.TYPE_RETAIL,
-            amount=Decimal("200"),
-            created_by=self.manager,
-        )
-
-        # 4) Cash sale in destination store, then cancel it.
+        # 3) Cash sale in destination store uses the transferred batch sale price.
         cash_cart = Cart.objects.create(user=self.manager, store=self.b, customer=None)
         item_response = self._cart_item(cash_cart, self.manager, Decimal("1"))
         self.assertEqual(item_response.status_code, 201)

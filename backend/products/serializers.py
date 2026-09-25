@@ -9,8 +9,6 @@ from core.fields import (
 )
 from .models import Category, Product, Inventory, InventoryTransaction, Supplier, Purchase, PurchaseReturn, PurchaseItem, ProductBatch, SupplierTransaction, StockTransfer, StockTransferItem, ProductPrice
 
-from .pricing import get_valid_product_prices
-
 from .services import (
     generate_ean13,
     is_valid_ean13,
@@ -94,8 +92,6 @@ class ProductSerializer(serializers.ModelSerializer):
             "effective_price_type",
             "effective_price_type_display",
             "unit",
-            "purchase_price",
-            "sale_price",
             "is_active",
             "created_at",
             "updated_at",
@@ -111,38 +107,30 @@ class ProductSerializer(serializers.ModelSerializer):
             "effective_sale_price",
             "effective_price_type",
             "effective_price_type_display",
-            "purchase_price",
-            "sale_price",
         ]
 
     def _store_id(self):
         request = self.context.get("request")
         return request.query_params.get("store") if request else None
 
-    def _active_retail(self, obj):
-        store_id = self._store_id()
-        if not store_id:
-            return None
-        return get_valid_product_prices(obj, store_id, price_type=ProductPrice.TYPE_RETAIL).first()
-
     def get_effective_sale_price(self, obj):
         from .pricing import get_effective_sale_price
         store_id = self._store_id()
         if not store_id:
-            return str(obj.sale_price)
-        return str(get_effective_sale_price(obj, store_id, price_type=ProductPrice.TYPE_RETAIL))
+            return None
+        price = get_effective_sale_price(obj, store_id, price_type=ProductPrice.TYPE_RETAIL)
+        return str(price) if price is not None else None
 
     def get_effective_price_type(self, obj):
         store_id = self._store_id()
         if not store_id:
-            return "base"
+            return None
         from .pricing import get_active_batch
-        if get_active_batch(obj, store_id):
-            return "retail"
-        return "retail" if self._active_retail(obj) else "base"
+        return "retail" if get_active_batch(obj, store_id) else None
 
     def get_effective_price_type_display(self, obj):
-        return "خرده‌فروشی" if self.get_effective_price_type(obj) == "retail" else "قیمت پایه"
+        price_type = self.get_effective_price_type(obj)
+        return "خرده‌فروشی" if price_type == "retail" else "قیمت فعال تعریف نشده"
 
     def get_inventory_quantity(self, obj):
         request = self.context.get("request")
@@ -958,6 +946,8 @@ class ProductPriceSerializer(serializers.ModelSerializer):
         product = attrs.get("product", getattr(self.instance, "product", None))
         store = attrs.get("store", getattr(self.instance, "store", None))
         price_type = attrs.get("price_type", getattr(self.instance, "price_type", ProductPrice.TYPE_RETAIL))
+        if price_type == ProductPrice.TYPE_RETAIL:
+            raise serializers.ValidationError({"price_type": "قیمت خرده‌فروشی فقط از Batch تأمین می‌شود و در این صفحه قابل تعریف نیست."})
         is_active = attrs.get("is_active", getattr(self.instance, "is_active", True))
         if product and store and is_active and (self.instance is None or product != self.instance.product or store != self.instance.store or price_type != self.instance.price_type or start != self.instance.effective_from or end != self.instance.effective_to or is_active != self.instance.is_active):
             qs = ProductPrice.objects.filter(product=product, store=store, price_type=price_type, is_active=True)

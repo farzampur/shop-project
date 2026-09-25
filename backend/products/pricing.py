@@ -1,6 +1,6 @@
 from decimal import Decimal
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q, F, Sum, DecimalField, ExpressionWrapper
 from rest_framework.exceptions import ValidationError
 
 
@@ -35,18 +35,74 @@ def get_active_batch(product, store_id, at=None):
 
 
 def get_effective_sale_price(product, store_id, price_type="retail", at=None):
-    # Retail pricing is batch-controlled whenever a sellable batch exists.
-    # ProductPrice.retail is retained only as a legacy/fallback mechanism for
-    # stores that have no batch-controlled stock yet.
+    """Return the effective selling price for a store.
+
+    Retail is determined exclusively by the oldest sellable batch (FIFO).
+    Wholesale/special prices come from ProductPrice. Product-level legacy
+    purchase/sale prices are intentionally not supported.
+    """
     if price_type == "retail":
         batch = get_active_batch(product, store_id, at=at)
-        if batch is not None and Decimal(batch.sale_price) > 0:
-            return Decimal(batch.sale_price)
+        return Decimal(batch.sale_price) if batch is not None else None
 
     price = get_active_price(product, store_id, price_type=price_type, at=at)
-    if price is not None:
-        return Decimal(price.amount)
+    return Decimal(price.amount) if price is not None else None
 
-    if price_type == "retail":
-        return Decimal(product.sale_price)
-    return None
+
+def get_batch_valuation_map(store_ids, product_ids=None, at=None):
+    """Aggregate the remaining value/profit of batch-controlled stock.
+
+    Values are grouped per (store, product) so reports can remain batch-aware
+    without falling back to deprecated Product price fields.
+    """
+    moment = at or timezone.now()
+    from .models import ProductBatch
+
+    qs = ProductBatch.objects.filter(
+        store_id__in=set(store_ids),
+        remaining_quantity__gt=0,
+        received_at__lte=moment,
+    )
+    if product_ids is not None:
+        qs = qs.filter(product_id__in=set(product_ids))
+
+    value_field = DecimalField(max_digits=24, decimal_places=4)
+    rows = (
+        qs.values("store_id", "product_id")
+        .annotate(
+            quantity=Sum("remaining_quantity"),
+            inventory_value=Sum(
+                ExpressionWrapper(
+                    F("remaining_quantity") * F("purchase_price"),
+                    output_field=value_field,
+                )
+            ),
+            sale_value=Sum(
+                ExpressionWrapper(
+                    F("remaining_quantity") * F("sale_price"),
+                    output_field=value_field,
+                )
+            ),
+            potential_profit=Sum(
+                ExpressionWrapper(
+                    F("remaining_quantity") * (F("sale_price") - F("purchase_price")),
+                    output_field=value_field,
+                )
+            ),
+        )
+    )
+
+    result = {}
+    for row in rows:
+        quantity = row["quantity"] or Decimal("0")
+        inventory_value = row["inventory_value"] or Decimal("0")
+        sale_value = row["sale_value"] or Decimal("0")
+        result[(row["store_id"], row["product_id"])] = {
+            "quantity": quantity,
+            "inventory_value": inventory_value,
+            "sale_value": sale_value,
+            "potential_profit": row["potential_profit"] or Decimal("0"),
+            "purchase_price": (inventory_value / quantity) if quantity else None,
+            "sale_price": (sale_value / quantity) if quantity else None,
+        }
+    return result

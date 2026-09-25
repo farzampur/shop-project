@@ -141,6 +141,14 @@ class CartPermission(BasePermission):
         else:
             store = obj.cart.store
 
+        requested_store = request.query_params.get("store") or request.data.get("store")
+        if requested_store not in (None, ""):
+            try:
+                if int(requested_store) != store.id:
+                    return False
+            except (TypeError, ValueError):
+                return False
+
         return UserStore.objects.filter(
             user=request.user,
             store=store,

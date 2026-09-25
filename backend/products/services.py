@@ -902,7 +902,7 @@ def build_product_qrcode_png(product):
 
     return buffer
     
-def build_product_label_pdf(product):
+def build_product_label_pdf(product, store_id=None):
     """
     تولید PDF برچسب یک کالا
     شامل نام، قیمت، Barcode و QR Code
@@ -982,10 +982,15 @@ def build_product_label_pdf(product):
         label_title_style,
     )
 
+    from .pricing import get_effective_sale_price
+    effective_price = get_effective_sale_price(
+        product,
+        store_id or product.category.store_id,
+        price_type="retail",
+    )
+    price_text = money(effective_price) if effective_price is not None else "—"
     product_price = Paragraph(
-        fa(
-            f"قیمت: {money(product.sale_price)}"
-        ),
+        fa(f"قیمت: {price_text}"),
         label_price_style,
     )
 
@@ -1091,6 +1096,7 @@ def build_product_label_pdf(product):
 def build_product_labels_pdf(
     product,
     count=9,
+    store_id=None,
 ):
     """
     تولید PDF چند برچسب برای یک کالا
@@ -1267,11 +1273,15 @@ def build_product_labels_pdf(
             label_name_style,
         )
 
+        from .pricing import get_effective_sale_price
+        effective_price = get_effective_sale_price(
+            product,
+            store_id or product.category.store_id,
+            price_type="retail",
+        )
+        price_text = money(effective_price) if effective_price is not None else "—"
         product_price = Paragraph(
-            fa(
-                f"قیمت: "
-                f"{money(product.sale_price)}"
-            ),
+            fa(f"قیمت: {price_text}"),
             label_price_style,
         )
 

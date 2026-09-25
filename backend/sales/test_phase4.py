@@ -7,7 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from accounts.models import UserStore
 from core.models import Store
-from products.models import Category, Product, Inventory
+from products.models import Category, Product, Inventory, ProductBatch
 from .models import CashBox, CashBoxTransaction, CashTransfer, Expense, Order, Cart, CartItem, Payment
 from .services import CheckoutService
 from .views import CashBoxTransactionViewSet, CashTransferViewSet, ExpenseViewSet, DashboardView, SalesReportViewSet
@@ -110,9 +110,9 @@ class Phase4ReportTests(TestCase):
         cat = Category.objects.create(name="Report Cat", store=self.store)
         self.product = Product.objects.create(
             name="Report Product", barcode="4234567890129", category=cat,
-            purchase_price=Decimal("50"), sale_price=Decimal("100"),
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("20"))
+        ProductBatch.objects.create(product=self.product, store=self.store, quantity=20, remaining_quantity=20, purchase_price=50, sale_price=100)
         self.cash = CashBox.objects.create(store=self.store, name="Main", balance=Decimal("0"))
         cart = Cart.objects.create(user=self.user, store=self.store)
         CartItem.objects.create(cart=cart, product=self.product, quantity=Decimal("2"), unit_price=Decimal("100"))

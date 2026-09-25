@@ -7,7 +7,7 @@ from rest_framework.exceptions import ValidationError
 
 from accounts.models import UserStore
 from core.models import Store
-from products.models import Category, Inventory, Product, Supplier, SupplierTransaction
+from products.models import Category, Inventory, Product, ProductBatch, Supplier, SupplierTransaction
 
 from .models import CashBox, Cart, CartItem, Customer, CustomerTransaction, Order
 from .services import CheckoutService, OrderService
@@ -22,21 +22,21 @@ class Phase683ConcurrencyFinancialIntegrityTests(TestCase):
         self.category = Category.objects.create(name="P683 Cat", store=self.store)
         self.product_a = Product.objects.create(
             name="P683 A", barcode="8834567890120", category=self.category,
-            purchase_price=Decimal("40"), sale_price=Decimal("100"),
         )
         self.product_b = Product.objects.create(
             name="P683 B", barcode="8834567890121", category=self.category,
-            purchase_price=Decimal("50"), sale_price=Decimal("120"),
         )
         self.inv_a = Inventory.objects.create(product=self.product_a, store=self.store, quantity=Decimal("1"), min_quantity=0)
         self.inv_b = Inventory.objects.create(product=self.product_b, store=self.store, quantity=Decimal("1"), min_quantity=0)
+        ProductBatch.objects.create(product=self.product_a, store=self.store, quantity=1, remaining_quantity=1, purchase_price=40, sale_price=100)
+        ProductBatch.objects.create(product=self.product_b, store=self.store, quantity=1, remaining_quantity=1, purchase_price=50, sale_price=120)
 
     def _cart(self, items):
         cart = Cart.objects.create(user=self.user, store=self.store)
         for product, quantity in items:
             CartItem.objects.create(
                 cart=cart, product=product, quantity=quantity,
-                unit_price=product.sale_price, discount_percent=0, price_type="retail",
+                unit_price=(Decimal("100") if product == self.product_a else Decimal("120")), discount_percent=0, price_type="retail",
             )
         return cart
 

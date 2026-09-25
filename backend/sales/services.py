@@ -172,10 +172,6 @@ class CheckoutService:
         order_items = []
         for item in items:
             product_batches = batches_by_product.get(item.product_id, [])
-            has_any_batch = ProductBatch.objects.filter(
-                product=item.product, store=cart.store
-            ).exists()
-
             # Allocate against the shared, locked in-memory batch state.
             remaining = item.quantity
             allocations = []
@@ -191,16 +187,10 @@ class CheckoutService:
                 batch.remaining_quantity -= take
                 remaining -= take
 
-            if remaining > 0 and has_any_batch:
-                raise ValidationError(
-                    f"موجودی بچ‌های کالای «{item.product.name}» برای فروش کافی نیست."
-                )
-
-            # No batch means legacy inventory: retain the historical product
-            # purchase-price fallback instead of breaking old stock.
             if remaining > 0:
-                allocations = []
-                weighted_cost = item.quantity * item.product.purchase_price
+                raise ValidationError(
+                    f"موجودی بچ‌های کالای «{item.product.name}» برای فروش کافی نیست یا Batch معتبر ندارد."
+                )
 
             # A retail line may span batches. Create one immutable order line per
             # allocation so sale price and purchase cost remain tied to the batch.
@@ -234,11 +224,7 @@ class CheckoutService:
             totals[0] += before
             totals[1] += item.quantity * discount_amount
             totals[2] += item.quantity * final_unit_price
-            snapshot_cost = (
-                weighted_cost / item.quantity
-                if item.quantity and allocations
-                else item.product.purchase_price
-            )
+            snapshot_cost = weighted_cost / item.quantity
             order_item = OrderItem.objects.create(
                 order=order, product=item.product, product_name=item.product.name,
                 quantity=item.quantity, unit_price=item.unit_price,

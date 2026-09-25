@@ -68,6 +68,12 @@ urlpatterns = [
         "api/sales/",
         include("sales.urls")
     ),
+
+    # Isolated accounting module
+    path(
+        "api/accounting/",
+        include("accounting.urls")
+    ),
     
 ]
 

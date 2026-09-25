@@ -40,8 +40,6 @@ class Phase693BatchTransferTests(TestCase):
             name="P693 Product",
             barcode="9234567890123",
             category=self.cat,
-            purchase_price=Decimal("50"),
-            sale_price=Decimal("100"),
         )
         self.inventory = Inventory.objects.create(
             product=self.product,

@@ -30,6 +30,9 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import PriceChangeIcon from "@mui/icons-material/PriceChange";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import EventNoteIcon from "@mui/icons-material/EventNote";
+import DescriptionIcon from "@mui/icons-material/Description";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import MenuOpenIcon from "@mui/icons-material/MenuOpen";
@@ -66,6 +69,11 @@ const menuItems: readonly MenuItem[] = [
   { key: "transfers", title: "انتقال بین شعب", path: "/transfers", icon: <SwapHorizIcon /> },
   { key: "pricing", title: "قیمت‌گذاری", path: "/pricing", icon: <PriceChangeIcon /> },
   { key: "advancedReports", title: "گزارش‌های تکمیلی", path: "/advanced-reports", icon: <AssessmentIcon /> },
+  { key: "accountingDashboard", title: "حسابداری", path: "/accounting", icon: <AccountBalanceIcon /> },
+  { key: "accountingAccounts", title: "سرفصل حساب‌ها", path: "/accounting/accounts", icon: <AccountTreeIcon /> },
+  { key: "accountingPeriods", title: "دوره‌های مالی", path: "/accounting/periods", icon: <EventNoteIcon /> },
+  { key: "accountingEntries", title: "اسناد حسابداری", path: "/accounting/entries", icon: <DescriptionIcon /> },
+  { key: "accountingReports", title: "گزارش‌های حسابداری", path: "/accounting/reports", icon: <AssessmentIcon /> },
 ];
 
 const roleLabels = {

@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from accounts.models import UserStore
 from accounts.permissions import StoreRolePermission
-from accounts.store_access import has_store_access, require_store_access, user_store_ids
+from accounts.store_access import has_store_access, require_store_access, user_store_ids, requested_store_id
 from django.utils import timezone
 from .models import Cart, CartItem, Order, OrderItem, Expense, Customer, CashDayClose
 from .models import CustomerTransaction, CashBox, CashBoxTransaction, CashTransfer, Payment
@@ -48,7 +48,7 @@ from .services import CheckoutService, OrderService, build_invoice_pdf
 from .permissions import CartPermission, get_user_max_discount
 from products.models import Product, Inventory, ProductBatch, SupplierTransaction
 from core.audit import audit
-from products.pricing import get_effective_sale_price, get_active_batch
+from products.pricing import get_effective_sale_price, get_active_batch, get_batch_valuation_map
 
 
 def _report_store_ids(request):
@@ -671,23 +671,20 @@ class SalesReportViewSet(viewsets.ViewSet):
         from core.models import Store
         stores = {x.id: x.name for x in Store.objects.filter(id__in=store_ids)}
         inv = Inventory.objects.filter(store_id__in=store_ids)
+        valuation = get_batch_valuation_map(store_ids)
         data = []
         for sid in store_ids:
             qs = inv.filter(store_id=sid)
-            # از نام فیلدهای مدل به‌عنوان alias aggregate استفاده نکنیم؛
-            # در Django جدید، alias ای مثل quantity می‌تواند هنگام resolve شدن
-            # عبارت بعدی به‌عنوان aggregate تفسیر شود و FieldError بدهد.
+            value = sum(
+                (row["inventory_value"] for (store_id, _), row in valuation.items() if store_id == sid),
+                Decimal("0"),
+            )
             agg = qs.aggregate(
                 total_quantity=Coalesce(Sum("quantity"), Decimal("0.00"), output_field=DecimalField()),
-                total_inventory_value=Coalesce(
-                    Sum(F("quantity") * F("product__purchase_price")),
-                    Decimal("0.00"),
-                    output_field=DecimalField(),
-                ),
             )
             data.append({
                 "store_id": sid, "store_name": stores.get(sid, str(sid)),
-                "quantity": agg["total_quantity"], "inventory_value": agg["total_inventory_value"],
+                "quantity": agg["total_quantity"], "inventory_value": value,
                 "low_stock_count": qs.filter(quantity__lte=F("min_quantity")).count(),
                 "product_count": qs.count(),
             })
@@ -1119,9 +1116,11 @@ class CustomerBalanceView(APIView):
 
     def get(self, request, customer_id):
 
+        store_id = requested_store_id(request, request.user)
         customer = get_object_or_404(
             Customer.objects.filter(store_id__in=user_store_ids(request.user)),
             id=customer_id,
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         sales_amount = (
@@ -1289,9 +1288,11 @@ class CustomerLedgerView(APIView):
 
     def get(self, request, customer_id):
 
+        store_id = requested_store_id(request, request.user)
         customer = get_object_or_404(
             Customer.objects.filter(store_id__in=user_store_ids(request.user)),
             id=customer_id,
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         transactions = (
@@ -1497,12 +1498,17 @@ class CashBoxTransactionViewSet(
         
         
 class FinancialSummaryView(APIView):
-    """خلاصه یکپارچه مالی فروشگاه‌های مجاز کاربر."""
+    """خلاصه یکپارچه مالی همه فروشگاه‌های مجاز کاربر.
+
+    این گزارش فیلتر فروشگاه ارائه نمی‌کند؛ پارامتر query string مربوط به
+    store عمداً نادیده گرفته می‌شود تا درخواست یک کاربر هرگز باعث دسترسی
+    به داده فروشگاهی خارج از دسترسی او نشود.
+    """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        store_ids = _report_store_ids(request)
+        store_ids = set(user_store_ids(request.user))
         orders = Order.objects.filter(store_id__in=store_ids, status="paid")
         expenses = Expense.objects.filter(store_id__in=store_ids)
         cashboxes = CashBox.objects.filter(store_id__in=store_ids)
@@ -2179,6 +2185,7 @@ class InvoicePDFView(APIView):
         order_id
     ):
 
+        store_id = requested_store_id(request, request.user)
         order = get_object_or_404(
             Order.objects
             .prefetch_related(
@@ -2192,6 +2199,7 @@ class InvoicePDFView(APIView):
             ),
             id=order_id,
             store_id__in=user_store_ids(request.user),
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         pdf_buffer = (
@@ -2220,6 +2228,7 @@ class ThermalReceiptPDFView(APIView):
         order_id
     ):
 
+        store_id = requested_store_id(request, request.user)
         order = get_object_or_404(
             Order.objects
             .prefetch_related(
@@ -2232,6 +2241,7 @@ class ThermalReceiptPDFView(APIView):
             ),
             id=order_id,
             store_id__in=user_store_ids(request.user),
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         pdf_buffer = (

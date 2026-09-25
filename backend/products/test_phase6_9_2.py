@@ -123,8 +123,6 @@ class CrossStoreSupplierReportTests(TestCase):
             category=category,
             name="Product 6.9.2",
             barcode="6920001",
-            purchase_price=Decimal("100"),
-            sale_price=Decimal("150"),
         )
 
         Inventory.objects.create(

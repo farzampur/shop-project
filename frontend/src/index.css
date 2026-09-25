@@ -164,3 +164,6 @@
     width: calc(100% - 16px) !important;
   }
 }
+
+.route-loading{min-height:45vh;display:grid;place-items:center;color:#68758a;font-size:.9rem;font-weight:700}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}

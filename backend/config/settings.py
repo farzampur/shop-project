@@ -93,6 +93,7 @@ INSTALLED_APPS = [
     'accounts',
     'products',    
     'sales',
+    'accounting',
     "rest_framework_simplejwt.token_blacklist",
 ]
 
@@ -237,3 +238,6 @@ REFRESH_COOKIE_SECURE = _env_bool(
     "REFRESH_COOKIE_SECURE",
     not DEBUG,
 )
+
+# Accounting feature flag: the safe default keeps legacy business flows unchanged.
+ACCOUNTING_AUTO_POSTING = os.getenv("ACCOUNTING_AUTO_POSTING", "0").strip().lower() in {"1", "true", "yes", "on"}

@@ -56,6 +56,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         from products.models import Category, Supplier, Purchase, Inventory, ProductBatch, StockTransfer
         from sales.models import Customer, CustomerTransaction, Order, CashBox
 
+
         has_history = any((
             Category.objects.filter(store=obj).exists(),
             Supplier.objects.filter(store=obj).exists(),

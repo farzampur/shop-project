@@ -23,7 +23,7 @@ class Phase693RetailPricingTests(TestCase):
         self.category = Category.objects.create(name="P693 Pricing Cat", store=self.store)
         self.product = Product.objects.create(
             name="P693 Pricing Product", barcode="9234567890456",
-            category=self.category, sale_price=Decimal("100"),
+            category=self.category,
         )
         Inventory.objects.create(product=self.product, store=self.store, quantity=Decimal("10"), min_quantity=Decimal("1"))
         self.supplier = Supplier.objects.create(store=self.store, name="P693 Supplier")
@@ -64,12 +64,12 @@ class Phase693RetailPricingTests(TestCase):
         self.assertEqual(get_effective_sale_price(self.product, self.store.id), Decimal("95"))
         self.assertEqual(second.remaining_quantity, Decimal("7"))
 
-    def test_retail_product_price_remains_legacy_fallback_when_no_batch_exists(self):
+    def test_retail_price_is_none_without_sellable_batch(self):
         ProductPrice.objects.create(
             product=self.product, store=self.store, price_type=ProductPrice.TYPE_RETAIL,
             amount=Decimal("120"), created_by=self.user,
         )
-        self.assertEqual(get_effective_sale_price(self.product, self.store.id), Decimal("120"))
+        self.assertIsNone(get_effective_sale_price(self.product, self.store.id))
 
     def test_product_price_serializer_still_supports_wholesale_and_special(self):
         now = timezone.now()

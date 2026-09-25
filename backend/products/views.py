@@ -62,7 +62,8 @@ from .serializers import (
     ProductPriceSerializer,
     ProductBatchSerializer,
 )
-from accounts.store_access import has_store_access, user_store_ids
+from accounts.store_access import has_store_access, user_store_ids, requested_store_id
+from .pricing import get_active_batch, get_effective_sale_price, get_batch_valuation_map
 
 
 def _report_store_ids(request):
@@ -133,10 +134,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         category = self.get_object()
-        store = serializer.validated_data.get(
-            "store",
-            category.store
-        )
+        store = serializer.validated_data.get("store", category.store)
+        if store.id != category.store_id:
+            raise ValidationError("انتقال دسته‌بندی بین فروشگاه‌ها مجاز نیست.")
 
         has_access = self.request.user.user_stores.filter(
             store=store,
@@ -239,6 +239,13 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         serializer.save()
 
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        target_category = serializer.validated_data.get("category", instance.category)
+        if target_category.store_id != instance.category.store_id:
+            raise ValidationError("انتقال کالا بین فروشگاه‌ها مجاز نیست.")
+        serializer.save()
 
     def perform_destroy(self, instance):
 
@@ -1339,101 +1346,45 @@ from django.db.models import (
 
 
 class InventoryValueReportView(APIView):
-    """
-    گزارش ارزش موجودی انبار.
+    """گزارش ارزش موجودی بر اساس باقی‌مانده واقعی Batchها."""
 
-    ارزش موجودی هر رکورد:
-        quantity × purchase_price
-
-    همچنین مجموع ارزش کل انبار
-    محاسبه می‌شود.
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         store_ids = _report_store_ids(request)
-        """
-        محاسبه ارزش موجودی کالاها
-        و مجموع ارزش کل انبار.
-        """
-
         inventories = (
             Inventory.objects
             .filter(store_id__in=store_ids)
-            .select_related(
-                "product",
-                "store",
-            )
-            .annotate(
-                inventory_value=ExpressionWrapper(
-                    F("quantity")
-                    * F("product__purchase_price"),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                )
-            )
-            .order_by(
-                "product__name"
-            )
+            .select_related("product", "store")
+            .order_by("product__name")
         )
-
-        total_value = (
-            inventories.aggregate(
-                total=Sum(
-                    "inventory_value"
-                )
-            )["total"]
-            or 0
+        valuation = get_batch_valuation_map(
+            store_ids,
+            [row.product_id for row in inventories],
         )
-
+        total_value = Decimal("0")
         data = []
-
         for item in inventories:
-
-            data.append(
-                {
-                    "inventory_id":
-                        item.id,
-
-                    "product_id":
-                        item.product_id,
-
-                    "product":
-                        item.product.name,
-
-                    "store_id":
-                        item.store_id,
-
-                    "store":
-                        item.store.name,
-
-                    "quantity":
-                        item.quantity,
-
-                    "purchase_price":
-                        item.product.purchase_price,
-
-                    "inventory_value":
-                        item.inventory_value,
-                }
-            )
-
-        return Response(
-            {
-                "total_inventory_value":
-                    total_value,
-
-                "items":
-                    data,
-            }
-        )
-        
-        
+            value = valuation.get((item.store_id, item.product_id), {})
+            batch_quantity = value.get("quantity", Decimal("0"))
+            inventory_value = value.get("inventory_value", Decimal("0"))
+            total_value += inventory_value
+            data.append({
+                "inventory_id": item.id,
+                "product_id": item.product_id,
+                "product": item.product.name,
+                "store_id": item.store_id,
+                "store": item.store.name,
+                "quantity": item.quantity,
+                "valued_quantity": batch_quantity,
+                "unvalued_quantity": max(item.quantity - batch_quantity, Decimal("0")),
+                "purchase_price": value.get("purchase_price"),
+                "inventory_value": inventory_value,
+            })
+        return Response({
+            "total_inventory_value": total_value,
+            "items": data,
+        })
 
 class SlowMovingInventoryReportView(APIView):
     """
@@ -1581,529 +1532,168 @@ class SlowMovingInventoryReportView(APIView):
         )
 
 class InventoryPotentialProfitReportView(APIView):
-    """
-    گزارش سود بالقوه موجودی انبار.
+    """سود بالقوه موجودی بر اساس Batchهای باقی‌مانده."""
 
-    سود بالقوه بر اساس قیمت‌های فعلی Product
-    و مقدار موجودی فعلی Inventory محاسبه می‌شود.
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         store_ids = _report_store_ids(request)
-        """
-        محاسبه سود بالقوه هر موجودی
-        و مجموع سود بالقوه کل انبار.
-        """
-
-        from django.db.models import (
-            F,
-            Sum,
-            DecimalField,
-            ExpressionWrapper,
-        )
-
         inventories = (
             Inventory.objects
             .filter(store_id__in=store_ids)
-            .select_related(
-                "product",
-                "store",
-            )
-            .annotate(
-                unit_potential_profit=ExpressionWrapper(
-                    F("product__sale_price")
-                    - F("product__purchase_price"),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                ),
-                potential_profit=ExpressionWrapper(
-                    F("quantity")
-                    * (
-                        F("product__sale_price")
-                        - F("product__purchase_price")
-                    ),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                ),
-            )
-            .order_by(
-                "product__name"
-            )
+            .select_related("product", "store")
+            .order_by("product__name")
         )
-
-        total_potential_profit = (
-            inventories.aggregate(
-                total=Sum(
-                    "potential_profit"
-                )
-            )["total"]
-            or 0
+        valuation = get_batch_valuation_map(
+            store_ids,
+            [row.product_id for row in inventories],
         )
-
+        total_potential_profit = Decimal("0")
         data = []
-
         for item in inventories:
-
-            data.append(
-                {
-                    "inventory_id": item.id,
-
-                    "product_id":
-                        item.product_id,
-
-                    "product":
-                        item.product.name,
-
-                    "store_id":
-                        item.store_id,
-
-                    "store":
-                        item.store.name,
-
-                    "quantity":
-                        item.quantity,
-
-                    "purchase_price":
-                        item.product.purchase_price,
-
-                    "sale_price":
-                        item.product.sale_price,
-
-                    "unit_potential_profit":
-                        item.unit_potential_profit,
-
-                    "potential_profit":
-                        item.potential_profit,
-                }
-            )
-
-        return Response(
-            {
-                "total_potential_profit":
-                    total_potential_profit,
-
-                "items":
-                    data,
-            }
-        )
-
+            value = valuation.get((item.store_id, item.product_id), {})
+            batch_quantity = value.get("quantity", Decimal("0"))
+            potential_profit = value.get("potential_profit", Decimal("0"))
+            total_potential_profit += potential_profit
+            data.append({
+                "inventory_id": item.id,
+                "product_id": item.product_id,
+                "product": item.product.name,
+                "store_id": item.store_id,
+                "store": item.store.name,
+                "quantity": item.quantity,
+                "valued_quantity": batch_quantity,
+                "unvalued_quantity": max(item.quantity - batch_quantity, Decimal("0")),
+                "purchase_price": value.get("purchase_price"),
+                "sale_price": value.get("sale_price"),
+                "unit_potential_profit": (
+                    potential_profit / batch_quantity if batch_quantity else None
+                ),
+                "potential_profit": potential_profit,
+            })
+        return Response({
+            "total_potential_profit": total_potential_profit,
+            "items": data,
+        })
 
 class StoreInventorySummaryView(APIView):
-    """
-    گزارش خلاصه موجودی به تفکیک فروشگاه.
+    """خلاصه موجودی هر فروشگاه؛ ارزش از Batchهای باقیمانده محاسبه می‌شود."""
 
-    نمایش:
-    - تعداد رکوردهای موجودی
-    - کالاهای دارای موجودی
-    - کالاهای کم‌موجود
-    - کالاهای اتمام‌یافته
-    - ارزش کل موجودی
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         store_ids = _report_store_ids(request)
-        """
-        محاسبه خلاصه موجودی هر فروشگاه.
-        """
-
-        inventories = (
-            Inventory.objects
-            .filter(store_id__in=store_ids)
-            .select_related(
-                "store",
-                "product",
+        inventories = Inventory.objects.filter(store_id__in=store_ids)
+        valuation = get_batch_valuation_map(store_ids)
+        data = []
+        for sid in store_ids:
+            qs = inventories.filter(store_id=sid)
+            value = sum(
+                (row["inventory_value"] for (store_id, _), row in valuation.items() if store_id == sid),
+                Decimal("0"),
             )
-            .annotate(
-                inventory_value=ExpressionWrapper(
-                    F("quantity")
-                    * F(
-                        "product__purchase_price"
-                    ),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                )
-            )
-        )
-
-        stores = (
-            inventories
-            .values(
-                "store_id",
-                "store__name",
-            )
-            .annotate(
-                inventory_count=Count(
-                    "id"
-                ),
-
-                in_stock_count=Count(
-                    "id",
-                    filter=Q(
-                        quantity__gt=0
-                    )
-                ),
-
-                low_stock_count=Count(
-                    "id",
-                    filter=Q(
-                        quantity__gt=0,
-                        quantity__lte=F(
-                            "min_quantity"
-                        ),
-                    )
-                ),
-
-                out_of_stock_count=Count(
-                    "id",
-                    filter=Q(
-                        quantity=0
-                    )
-                ),
-
-                inventory_value=Sum(
-                    "inventory_value"
-                ),
-            )
-            .order_by(
-                "store__name"
-            )
-        )
-
-        result = []
-
-        for store in stores:
-
-            result.append(
-                {
-                    "store_id":
-                        store["store_id"],
-
-                    "store":
-                        store["store__name"],
-
-                    "inventory_count":
-                        store["inventory_count"],
-
-                    "in_stock_count":
-                        store["in_stock_count"],
-
-                    "low_stock_count":
-                        store["low_stock_count"],
-
-                    "out_of_stock_count":
-                        store[
-                            "out_of_stock_count"
-                        ],
-
-                    "inventory_value":
-                        store[
-                            "inventory_value"
-                        ] or 0,
-                }
-            )
-
-        return Response(
-            result
-        )
-
+            store_name = qs.values_list("store__name", flat=True).first() or str(sid)
+            data.append({
+                "store_id": sid,
+                "store_name": store_name,
+                "inventory_count": qs.count(),
+                "in_stock_count": qs.filter(quantity__gt=0).count(),
+                "low_stock_count": qs.filter(quantity__gt=0, quantity__lte=F("min_quantity")).count(),
+                "out_of_stock_count": qs.filter(quantity=0).count(),
+                "inventory_value": value,
+            })
+        return Response(sorted(data, key=lambda row: row["inventory_value"], reverse=True))
 
 class InventoryReportView(APIView):
-    """
-    گزارش کامل موجودی کالاها.
+    """گزارش کامل موجودی با ارزش‌گذاری Batch-aware."""
 
-    فیلترها:
-    - store_id
-    - product_id
-    - only_low_stock=true
-    - only_out_of_stock=true
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         store_ids = _report_store_ids(request)
-        """
-        دریافت گزارش موجودی و اعمال فیلترهای درخواست.
-        """
+        store_id = request.query_params.get("store")
+        product_id = request.query_params.get("product_id") or request.query_params.get("product")
+        only_low_stock = request.query_params.get("only_low_stock") == "true"
+        only_out_of_stock = request.query_params.get("only_out_of_stock") == "true"
 
         queryset = (
             Inventory.objects
             .filter(store_id__in=store_ids)
-            .select_related(
-                "product",
-                "store",
-            )
-            .filter(
-                    store__store_users__user=request.user
-                )            
+            .select_related("store", "product")
         )
-
-        store_id = request.query_params.get("store") or request.query_params.get("store_id")        
-
-        product_id = request.query_params.get(
-            "product_id"
-        )
-
-        only_low_stock = (
-            request.query_params.get(
-                "only_low_stock"
-            )
-        )
-
-        only_out_of_stock = (
-            request.query_params.get(
-                "only_out_of_stock"
-            )
-        )
-
-        # فیلتر فروشگاه
-        if store_id:
-            queryset = queryset.filter(
-                store_id=store_id
-            )
-
-        # فیلتر کالا
         if product_id:
-            queryset = queryset.filter(
-                product_id=product_id
-            )
+            try:
+                queryset = queryset.filter(product_id=int(product_id))
+            except (TypeError, ValueError):
+                raise ValidationError({"product_id": "شناسه کالا نامعتبر است."})
+        if only_low_stock:
+            queryset = queryset.filter(quantity__gt=0, quantity__lte=F("min_quantity"))
+        if only_out_of_stock:
+            queryset = queryset.filter(quantity=0)
+        queryset = queryset.order_by("store__name", "product__name")
 
-        # فقط کم‌موجود
-        if only_low_stock == "true":
-            queryset = queryset.filter(
-                quantity__gt=0,
-                quantity__lte=F(
-                    "min_quantity"
-                )
-            )
-
-        # فقط اتمام‌یافته
-        if only_out_of_stock == "true":
-            queryset = queryset.filter(
-                quantity=0
-            )
-
-        queryset = (
-            queryset
-            .annotate(
-                inventory_value=ExpressionWrapper(
-                    F("quantity")
-                    * F(
-                        "product__purchase_price"
-                    ),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                )
-            )
-            .order_by(
-                "store__name",
-                "product__name",
-            )
-        )
-
+        product_ids = [row.product_id for row in queryset]
+        valuation = get_batch_valuation_map(store_ids, product_ids)
         result = []
-
         for item in queryset:
-
+            value = valuation.get((item.store_id, item.product_id), {})
+            batch_quantity = value.get("quantity", Decimal("0"))
             if item.quantity == 0:
-
                 stock_status = "out_of_stock"
-
-            elif (
-                item.quantity
-                <= item.min_quantity
-            ):
-
+            elif item.quantity <= item.min_quantity:
                 stock_status = "low_stock"
-
             else:
-
                 stock_status = "normal"
+            result.append({
+                "inventory_id": item.id,
+                "product_id": item.product_id,
+                "product": item.product.name,
+                "store_id": item.store_id,
+                "store": item.store.name,
+                "quantity": item.quantity,
+                "min_quantity": item.min_quantity,
+                "valued_quantity": batch_quantity,
+                "unvalued_quantity": max(item.quantity - batch_quantity, Decimal("0")),
+                "purchase_price": value.get("purchase_price"),
+                "sale_price": value.get("sale_price"),
+                "inventory_value": value.get("inventory_value", Decimal("0")),
+                "potential_profit": value.get("potential_profit", Decimal("0")),
+                "stock_status": stock_status,
+            })
+        return Response({
+            "filters": {
+                "store_id": store_id,
+                "product_id": product_id,
+                "only_low_stock": "true" if only_low_stock else None,
+                "only_out_of_stock": "true" if only_out_of_stock else None,
+            },
+            "count": len(result),
+            "items": result,
+        })
 
-            result.append(
-                {
-                    "inventory_id": item.id,
-                    "product_id": item.product_id,
-                    "product": item.product.name,
-                    "store_id": item.store_id,
-                    "store": item.store.name,
-                    "quantity": item.quantity,
-                    "min_quantity": item.min_quantity,
-                    "purchase_price":
-                        item.product.purchase_price,
-                    "sale_price":
-                        item.product.sale_price,
-                    "inventory_value":
-                        item.inventory_value,
-                    "stock_status":
-                        stock_status,
-                }
-            )
-
-        return Response(
-            {
-                "filters": {
-                    "store_id": store_id,
-                    "product_id": product_id,
-                    "only_low_stock":
-                        only_low_stock,
-                    "only_out_of_stock":
-                        only_out_of_stock,
-                },
-                "count": len(result),
-                "items": result,
-            }
-        )
-
-        
 class InventoryDashboardView(APIView):
-    """
-    داشبورد مدیریتی انبار.
+    """داشبورد موجودی با ارزش‌گذاری واقعی Batchها."""
 
-    نمایش:
-    - تعداد کل موجودی‌ها
-    - تعداد کالاهای دارای موجودی
-    - تعداد کالاهای کم‌موجود
-    - تعداد کالاهای اتمام‌یافته
-    - ارزش کل موجودی
-    - سود بالقوه کل موجودی
-    """
-
-    permission_classes = [
-        IsAuthenticated
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         store_ids = _report_store_ids(request)
-        """
-        محاسبه شاخص‌های اصلی انبار
-        برای فروشگاه‌های مجاز کاربر.
-        """
-
-        inventories = (
-            Inventory.objects
-            .filter(
-                store_id__in=store_ids
-            )
-            .select_related(
-                "product",
-                "store",
-            )
-            .annotate(
-                inventory_value=ExpressionWrapper(
-                    F("quantity")
-                    * F(
-                        "product__purchase_price"
-                    ),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                ),
-
-                potential_profit=ExpressionWrapper(
-                    F("quantity")
-                    * (
-                        F("product__sale_price")
-                        -
-                        F("product__purchase_price")
-                    ),
-                    output_field=DecimalField(
-                        max_digits=20,
-                        decimal_places=2,
-                    ),
-                ),
-            )
-        )
-
+        inventories = Inventory.objects.filter(store_id__in=store_ids)
+        valuation = get_batch_valuation_map(store_ids)
+        total_inventory_value = sum((row["inventory_value"] for row in valuation.values()), Decimal("0"))
+        total_potential_profit = sum((row["potential_profit"] for row in valuation.values()), Decimal("0"))
         summary = inventories.aggregate(
             inventory_count=Count("id"),
-
-            in_stock_count=Count(
-                "id",
-                filter=Q(
-                    quantity__gt=0
-                )
-            ),
-
-            low_stock_count=Count(
-                "id",
-                filter=Q(
-                    quantity__gt=0,
-                    quantity__lte=F(
-                        "min_quantity"
-                    ),
-                )
-            ),
-
-            out_of_stock_count=Count(
-                "id",
-                filter=Q(
-                    quantity=0
-                )
-            ),
-
-            total_inventory_value=Sum(
-                "inventory_value"
-            ),
-
-            total_potential_profit=Sum(
-                "potential_profit"
-            ),
+            in_stock_count=Count("id", filter=Q(quantity__gt=0)),
+            low_stock_count=Count("id", filter=Q(quantity__gt=0, quantity__lte=F("min_quantity"))),
+            out_of_stock_count=Count("id", filter=Q(quantity=0)),
+            total_quantity=Coalesce(Sum("quantity"), Decimal("0")),
         )
-
-        return Response(
-            {
-                "inventory_count":
-                    summary[
-                        "inventory_count"
-                    ] or 0,
-
-                "in_stock_count":
-                    summary[
-                        "in_stock_count"
-                    ] or 0,
-
-                "low_stock_count":
-                    summary[
-                        "low_stock_count"
-                    ] or 0,
-
-                "out_of_stock_count":
-                    summary[
-                        "out_of_stock_count"
-                    ] or 0,
-
-                "total_inventory_value":
-                    summary[
-                        "total_inventory_value"
-                    ] or 0,
-
-                "total_potential_profit":
-                    summary[
-                        "total_potential_profit"
-                    ] or 0,
-            }
-        )
-
+        return Response({
+            **summary,
+            "total_inventory_value": total_inventory_value,
+            "total_potential_profit": total_potential_profit,
+        })
 
 class SupplierTransactionViewSet(
     viewsets.ModelViewSet
@@ -2398,9 +1988,11 @@ class SupplierBalanceView(APIView):
         محاسبه مانده حساب تأمین‌کننده.
         """
 
+        store_id = requested_store_id(request, request.user)
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
+            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
             id=supplier_id,
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         purchase_total = (
@@ -2498,9 +2090,11 @@ class SupplierLedgerView(APIView):
         همراه با مانده لحظه‌ای.
         """
 
+        store_id = requested_store_id(request, request.user)
         supplier = get_object_or_404(
-            Supplier.objects.filter(store_id__in=user_store_ids(self.request.user)),
+            Supplier.objects.filter(store_id__in=user_store_ids(request.user)),
             id=supplier_id,
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         transactions = (
@@ -3708,9 +3302,11 @@ class SupplierSettleView(APIView):
         request,
         supplier_id
     ):
+        store_id = requested_store_id(request, request.user)
         supplier = get_object_or_404(
-            Supplier.objects.select_for_update().filter(store_id__in=user_store_ids(self.request.user)),
+            Supplier.objects.select_for_update().filter(store_id__in=user_store_ids(request.user)),
             id=supplier_id,
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         # -------------------------
@@ -3909,6 +3505,7 @@ class PurchaseReceiptPDFView(APIView):
         purchase_id
     ):
 
+        store_id = requested_store_id(request, request.user)
         purchase = get_object_or_404(
             Purchase.objects
             .prefetch_related(
@@ -3921,6 +3518,7 @@ class PurchaseReceiptPDFView(APIView):
             ),
             id=purchase_id,
             store_id__in=user_store_ids(request.user),
+            **({"store_id": store_id} if store_id is not None else {}),
         )
 
         pdf_buffer = (
@@ -3952,10 +3550,13 @@ class ProductBarcodeView(APIView):
         product_id
     ):
 
-        product = get_object_or_404(
-            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
-            id=product_id,
-        )
+        store_id = requested_store_id(request, request.user)
+        product_qs = Product.objects.filter(category__store_id__in=user_store_ids(request.user))
+        if store_id is not None:
+            product_qs = product_qs.filter(
+                Q(category__store_id=store_id) | Q(inventories__store_id=store_id)
+            ).distinct()
+        product = get_object_or_404(product_qs, id=product_id)
 
         try:
 
@@ -3996,10 +3597,13 @@ class ProductQRCodeView(APIView):
         product_id
     ):
 
-        product = get_object_or_404(
-            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
-            id=product_id,
-        )
+        store_id = requested_store_id(request, request.user)
+        product_qs = Product.objects.filter(category__store_id__in=user_store_ids(request.user))
+        if store_id is not None:
+            product_qs = product_qs.filter(
+                Q(category__store_id=store_id) | Q(inventories__store_id=store_id)
+            ).distinct()
+        product = get_object_or_404(product_qs, id=product_id)
 
         png_buffer = build_product_qrcode_png(
             product
@@ -4023,15 +3627,19 @@ class ProductLabelPDFView(APIView):
         product_id
     ):
 
-        product = get_object_or_404(
-            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
-            id=product_id,
-        )
+        store_id = requested_store_id(request, request.user)
+        product_qs = Product.objects.filter(category__store_id__in=user_store_ids(request.user))
+        if store_id is not None:
+            product_qs = product_qs.filter(
+                Q(category__store_id=store_id) | Q(inventories__store_id=store_id)
+            ).distinct()
+        product = get_object_or_404(product_qs, id=product_id)
 
         try:
             pdf_buffer = (
                 build_product_label_pdf(
-                    product
+                    product,
+                    store_id=product.category.store_id,
                 )
             )
 
@@ -4066,10 +3674,13 @@ class ProductLabelsPDFView(APIView):
         product_id
     ):
 
-        product = get_object_or_404(
-            Product.objects.filter(category__store_id__in=user_store_ids(request.user)),
-            id=product_id,
-        )
+        store_id = requested_store_id(request, request.user)
+        product_qs = Product.objects.filter(category__store_id__in=user_store_ids(request.user))
+        if store_id is not None:
+            product_qs = product_qs.filter(
+                Q(category__store_id=store_id) | Q(inventories__store_id=store_id)
+            ).distinct()
+        product = get_object_or_404(product_qs, id=product_id)
 
         count = request.query_params.get(
             "count",
@@ -4082,6 +3693,7 @@ class ProductLabelsPDFView(APIView):
                 build_product_labels_pdf(
                     product,
                     count=count,
+                    store_id=product.category.store_id,
                 )
             )
 
@@ -4189,6 +3801,9 @@ class ProductBarcodeSearchView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        active_batch = get_active_batch(product, store_id)
+        effective_sale_price = get_effective_sale_price(product, store_id, price_type="retail")
+
         return Response(
             {
                 "product": {
@@ -4196,12 +3811,9 @@ class ProductBarcodeSearchView(APIView):
                     "name": product.name,
                     "barcode": product.barcode,
                     "unit": product.unit,
-                    "purchase_price":
-                        product.purchase_price,
-                    "sale_price":
-                        product.sale_price,
-                    "is_active":
-                        product.is_active,
+                    "purchase_price": active_batch.purchase_price if active_batch else None,
+                    "sale_price": effective_sale_price,
+                    "is_active": product.is_active,
                 },
 
                 "store": int(store_id),
@@ -4535,8 +4147,11 @@ class ProductPriceViewSet(viewsets.ModelViewSet):
         audit(user=self.request.user, action="create", model_name="ProductPrice", object_id=obj.id, store=obj.store, description=f"ثبت قیمت {obj.product.name}", metadata={"type": obj.price_type, "amount": str(obj.amount)})
 
     def perform_update(self, serializer):
-        target_store = serializer.validated_data.get("store", serializer.instance.store)
-        target_product = serializer.validated_data.get("product", serializer.instance.product)
+        instance = serializer.instance
+        target_store = serializer.validated_data.get("store", instance.store)
+        target_product = serializer.validated_data.get("product", instance.product)
+        if target_store.id != instance.store_id:
+            raise ValidationError("انتقال قیمت بین فروشگاه‌ها مجاز نیست.")
         self._require_manager(target_store.id)
         if not Inventory.objects.filter(store=target_store, product=target_product).exists():
             raise ValidationError("این کالا در فروشگاه انتخاب‌شده تخصیص داده نشده است.")
